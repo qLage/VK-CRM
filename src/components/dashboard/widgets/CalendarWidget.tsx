@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin, Target } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, MapPin, Target, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -9,6 +9,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { localAPI } from '@/integrations/localAPI';
 import { useAuth } from '@/hooks/useAuth';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
+
+type DailyFinance = {
+  date: string;
+  income: number;
+  expense: number;
+  balance: number;
+  is_projected: boolean;
+};
+
+function fmtRub(n: number) {
+  return `${Math.round(n).toLocaleString('ru-RU')} ₽`;
+}
 
 const FIXED_SCHEDULE: Record<number, { time: string; title: string }[]> = {
     1: [ // Пн
@@ -77,6 +94,28 @@ export function CalendarWidget() {
         staleTime: 180000, // Cache for 3 minutes
     });
 
+    const monthStartStr = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+    const monthEndStr = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+
+    const { data: dailyFinance } = useQuery({
+        queryKey: ['daily-finance', monthStartStr, monthEndStr],
+        queryFn: async (): Promise<DailyFinance[]> => {
+            const { data, error } = await localAPI.request(
+                `/finances/daily-finance?start=${monthStartStr}&end=${monthEndStr}`,
+            );
+            if (error) throw error;
+            return (data as { days: DailyFinance[] })?.days || [];
+        },
+    });
+
+    const financeMap = useMemo(() => {
+        const map = new Map<string, DailyFinance>();
+        for (const d of dailyFinance || []) {
+            map.set(d.date, d);
+        }
+        return map;
+    }, [dailyFinance]);
+
     const days = eachDayOfInterval({
         start: startOfMonth(currentDate),
         end: endOfMonth(currentDate),
@@ -136,26 +175,78 @@ export function CalendarWidget() {
                     const hasEvents = todaysEvents.length > 0;
                     const active = isSameDay(selectedDate || new Date(0), day);
                     const today = isToday(day);
+                    const dateStr = format(day, 'yyyy-MM-dd');
+                    const fin = financeMap.get(dateStr);
+                    const isFuture = fin?.is_projected ?? false;
 
                     return (
-                        <button
-                            key={day.toISOString()}
-                            onClick={() => handleDateClick(day)}
-                            className={cn(
-                                "rounded-lg md:rounded-xl p-0.5 md:p-1 relative flex flex-col items-center justify-center min-h-[32px] md:min-h-[45px] transition-all duration-300 border",
-                                today
-                                    ? "bg-primary/20 text-white font-black border-primary/40 shadow-[0_0_15px_rgba(var(--primary),0.3)]"
-                                    : "bg-white/5 border-transparent text-white/40 hover:bg-white/10 hover:border-white/10",
-                                active && !today && "ring-2 ring-primary/40 text-white border-primary/20"
+                        <HoverCard key={day.toISOString()} openDelay={200} closeDelay={100}>
+                            <HoverCardTrigger asChild>
+                                <button
+                                    onClick={() => handleDateClick(day)}
+                                    className={cn(
+                                        "rounded-lg md:rounded-xl p-0.5 md:p-1 relative flex flex-col items-center justify-center min-h-[32px] md:min-h-[45px] transition-all duration-300 border",
+                                        today
+                                            ? "bg-primary/20 text-white font-black border-primary/40 shadow-[0_0_15px_rgba(var(--primary),0.3)]"
+                                            : "bg-white/5 border-transparent text-white/40 hover:bg-white/10 hover:border-white/10",
+                                        active && !today && "ring-2 ring-primary/40 text-white border-primary/20"
+                                    )}
+                                >
+                                    <span className="text-[10px] md:text-xs font-black tracking-tight">{format(day, 'd')}</span>
+                                    {hasEvents && (
+                                        <div className="absolute bottom-0.5 md:bottom-1.5 flex gap-0.5">
+                                            <div className="h-0.5 w-2 md:h-1 md:w-3 rounded-full bg-primary/60 blur-[1px]" />
+                                        </div>
+                                    )}
+                                </button>
+                            </HoverCardTrigger>
+                            {fin && (
+                                <HoverCardContent
+                                    side="top"
+                                    align="center"
+                                    className="w-56 p-3 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-sm"
+                                >
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                                            {isFuture ? 'План финансов' : 'Финансы'}
+                                        </p>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                                <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                                                <span className="text-xs text-white/70">
+                                                    {isFuture ? 'План дохода' : 'Доход'}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs font-bold tabular-nums text-emerald-400">{fmtRub(fin.income)}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                                <TrendingDown className="h-3.5 w-3.5 text-rose-400" />
+                                                <span className="text-xs text-white/70">
+                                                    {isFuture ? 'План расхода' : 'Расход'}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs font-bold tabular-nums text-rose-400">{fmtRub(fin.expense)}</span>
+                                        </div>
+                                        <div className="h-px bg-white/10" />
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                                <Wallet className="h-3.5 w-3.5 text-amber-400" />
+                                                <span className="text-xs text-white/70">
+                                                    {isFuture ? 'План баланс' : 'Баланс'}
+                                                </span>
+                                            </div>
+                                            <span className={cn(
+                                                'text-xs font-bold tabular-nums',
+                                                fin.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                            )}>
+                                                {fmtRub(fin.balance)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </HoverCardContent>
                             )}
-                        >
-                            <span className="text-[10px] md:text-xs font-black tracking-tight">{format(day, 'd')}</span>
-                            {hasEvents && (
-                                <div className="absolute bottom-0.5 md:bottom-1.5 flex gap-0.5">
-                                    <div className="h-0.5 w-2 md:h-1 md:w-3 rounded-full bg-primary/60 blur-[1px]" />
-                                </div>
-                            )}
-                        </button>
+                        </HoverCard>
                     );
                 })}
             </div>

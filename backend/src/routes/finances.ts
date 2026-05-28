@@ -2125,10 +2125,19 @@ router.get('/daily-finance', authenticateToken, requirePermission('can_view_fina
             res.status(400).json({ error: { message: 'company_context_required' } });
             return;
         }
-        const weekStart = String(req.query.week_start || '');
-        const weekEnd = String(req.query.week_end || '');
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart) || !/^\d{4}-\d{2}-\d{2}$/.test(weekEnd)) {
-            res.status(400).json({ error: { message: 'week_start и week_end обязательны (YYYY-MM-DD)' } });
+        const rangeStart = String(req.query.start || req.query.week_start || '');
+        const rangeEnd = String(req.query.end || req.query.week_end || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(rangeStart) || !/^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)) {
+            res.status(400).json({ error: { message: 'start и end обязательны (YYYY-MM-DD)' } });
+            return;
+        }
+        // Calculate number of days in range (max 31 to prevent abuse)
+        const dayMs = 24 * 60 * 60 * 1000;
+        const startDate = new Date(rangeStart + 'T00:00:00');
+        const endDate = new Date(rangeEnd + 'T00:00:00');
+        const dayCount = Math.round((endDate.getTime() - startDate.getTime()) / dayMs) + 1;
+        if (dayCount < 1 || dayCount > 31) {
+            res.status(400).json({ error: { message: 'Диапазон должен быть от 1 до 31 дня' } });
             return;
         }
 
@@ -2143,7 +2152,7 @@ router.get('/daily-finance', authenticateToken, requirePermission('can_view_fina
             FROM transactions
             WHERE company_id = $1 AND DATE(created_at) BETWEEN $2 AND $3
             GROUP BY DATE(created_at), type`,
-            [companyId, weekStart, weekEnd],
+            [companyId, rangeStart, rangeEnd],
         );
 
         // 2. Deal table rows — fact commissions + expenses by payment_date
@@ -2155,7 +2164,7 @@ router.get('/daily-finance', authenticateToken, requirePermission('can_view_fina
             FROM deal_table_rows
             WHERE company_id = $1 AND payment_date BETWEEN $2 AND $3
             GROUP BY payment_date`,
-            [companyId, weekStart, weekEnd],
+            [companyId, rangeStart, rangeEnd],
         );
 
         // 3. Deal table rows — plan commissions + expenses by payment_date (for future days)
@@ -2167,7 +2176,7 @@ router.get('/daily-finance', authenticateToken, requirePermission('can_view_fina
             FROM deal_table_rows
             WHERE company_id = $1 AND payment_date BETWEEN $2 AND $3
             GROUP BY payment_date`,
-            [companyId, weekStart, weekEnd],
+            [companyId, rangeStart, rangeEnd],
         );
 
         // 4. Recurring expenses by day of month
@@ -2221,8 +2230,8 @@ router.get('/daily-finance', authenticateToken, requirePermission('can_view_fina
             });
         }
 
-        for (let i = 0; i < 7; i++) {
-            const date = addDay(weekStart, i);
+        for (let i = 0; i < dayCount; i++) {
+            const date = addDay(rangeStart, i);
             const isProjected = date > todayStr;
 
             if (isProjected) {

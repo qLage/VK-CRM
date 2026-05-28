@@ -113,7 +113,7 @@ export function WeekCalendar() {
     queryKey: ['daily-finance', weekStartStr, weekEndStr],
     queryFn: async (): Promise<DailyFinance[]> => {
       const { data, error } = await localAPI.request(
-        `/finances/daily-finance?week_start=${weekStartStr}&week_end=${weekEndStr}`,
+        `/finances/daily-finance?start=${weekStartStr}&end=${weekEndStr}`,
       );
       if (error) throw error;
       return (data as { days: DailyFinance[] })?.days || [];

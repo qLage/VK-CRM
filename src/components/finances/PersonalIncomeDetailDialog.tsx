@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { localAPI } from '@/integrations/localAPI';
@@ -50,6 +52,19 @@ export function PersonalIncomeDetailDialog({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
   const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
+  const [applySelfEmployedTax, setApplySelfEmployedTax] = useState(true);
+
+  const { data: payrollSettings } = useQuery({
+    queryKey: ['payroll-org-settings'],
+    queryFn: async () => {
+      const { data, error } = await localAPI.request('/finances/payroll-org-settings');
+      if (error) throw error;
+      return data as { self_employed_tax_percent?: number };
+    },
+    enabled: open,
+    staleTime: 300000,
+  });
+  const taxPercent = payrollSettings?.self_employed_tax_percent ?? 6;
 
   const { data: deals = [], isLoading } = useQuery({
     queryKey: ['salary-deals', userId, year, month],
@@ -63,7 +78,9 @@ export function PersonalIncomeDetailDialog({
   });
 
   const getDealAmount = (deal: DealItem) => {
-    return editedAmounts[deal.id] ?? deal.amount;
+    const raw = editedAmounts[deal.id] ?? deal.amount;
+    if (!applySelfEmployedTax) return raw;
+    return Math.round(raw * (1 - taxPercent / 100));
   };
 
   const totalAmount = deals.reduce((sum: number, d: DealItem) => sum + (paidIds.has(d.id) ? 0 : getDealAmount(d)), 0);
@@ -96,13 +113,12 @@ export function PersonalIncomeDetailDialog({
   };
 
   const handlePayAll = () => {
-    const items = deals
-      .filter((d: DealItem) => !paidIds.has(`${d.id}-${d.role_type}`))
-      .map((d: DealItem) => ({
-        id: d.id,
-        amount: getDealAmount(d),
-        label: `${d.role_label}: ${d.property_name}`,
-      }));
+    const unpaidDeals = deals.filter((d: DealItem) => !paidIds.has(`${d.id}-${d.role_type}`));
+    const items = unpaidDeals.map((d: DealItem) => ({
+      id: d.id,
+      amount: getDealAmount(d),
+      label: `${d.role_label}: ${d.property_name}`,
+    }));
     const total = items.reduce((sum, i) => sum + i.amount, 0);
     onPayDeal(items, total);
     onOpenChange(false);
@@ -139,6 +155,17 @@ export function PersonalIncomeDetailDialog({
               {userName}
             </p>
           </DialogHeader>
+
+          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 shrink-0">
+            <Checkbox
+              id="apply-self-employed-tax-personal"
+              checked={applySelfEmployedTax}
+              onCheckedChange={(v) => setApplySelfEmployedTax(v === true)}
+            />
+            <Label htmlFor="apply-self-employed-tax-personal" className="text-sm text-white/80 font-medium cursor-pointer">
+              Удержать налог самозанятого ({taxPercent}%)
+            </Label>
+          </div>
 
           {isLoading ? (
             <div className="space-y-3">
@@ -228,10 +255,17 @@ export function PersonalIncomeDetailDialog({
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
-                            <span className="text-xl font-mono font-bold text-white tabular-nums">
-                              {amount.toLocaleString('ru-RU')}
-                              <span className="text-white/30 text-xs font-normal ml-1">₽</span>
-                            </span>
+                            <div className="flex flex-col items-end gap-0.5">
+                              {applySelfEmployedTax && (
+                                <span className="text-xs text-white/30 line-through tabular-nums">
+                                  {(editedAmounts[deal.id] ?? deal.amount).toLocaleString('ru-RU')} ₽
+                                </span>
+                              )}
+                              <span className="text-xl font-mono font-bold text-white tabular-nums">
+                                {amount.toLocaleString('ru-RU')}
+                                <span className="text-white/30 text-xs font-normal ml-1">₽</span>
+                              </span>
+                            </div>
                             {!isPaid && (
                               <Button
                                 size="sm"

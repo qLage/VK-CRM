@@ -5,9 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from '@/components/ui/checkbox';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { useQuery } from '@tanstack/react-query';
 import { useFinances } from '@/hooks/useFinances';
+import { localAPI } from '@/integrations/localAPI';
 import { SalaryPayrollFlowDialog } from './SalaryPayrollFlowDialog';
 import { PersonalIncomeDetailDialog } from './PersonalIncomeDetailDialog';
 import { formatInteger } from '@/utils/formatters';
@@ -61,8 +64,21 @@ export function PaymentBreakdownDialog({
   const [tempEditValue, setTempEditValue] = useState<string>('');
   const [paidComponents, setPaidComponents] = useState<Set<string>>(new Set());
   const [personalIncomeOpen, setPersonalIncomeOpen] = useState(false);
+  const [applySelfEmployedTax, setApplySelfEmployedTax] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const { transactions } = useFinances();
+
+  const { data: payrollSettings } = useQuery({
+    queryKey: ['payroll-org-settings'],
+    queryFn: async () => {
+      const { data, error } = await localAPI.request('/finances/payroll-org-settings');
+      if (error) throw error;
+      return data as { self_employed_tax_percent?: number };
+    },
+    enabled: open,
+    staleTime: 300000,
+  });
+  const taxPercent = payrollSettings?.self_employed_tax_percent ?? 6;
 
   useEffect(() => {
     const initialComponents: SalaryComponent[] = [];
@@ -126,8 +142,30 @@ export function PaymentBreakdownDialog({
       });
     }
 
+    // Self-employed tax (applied to personal income / commission)
+    const incomeForTax = personalIncomeTotal > 0
+      ? personalIncomeTotal
+      : (employee.commission > 0 &&
+         employee.personal_income === 0 &&
+         mortgageTotal === 0 &&
+         employee.team_revenue === 0 &&
+         employee.department_revenue === 0)
+        ? employee.commission
+        : 0;
+    if (applySelfEmployedTax && incomeForTax > 0) {
+      const taxAmount = Math.round(incomeForTax * taxPercent / 100);
+      if (taxAmount > 0) {
+        initialComponents.push({
+          id: 'self_employed_tax',
+          label: 'Налог самозанятого',
+          amount: -taxAmount,
+          color: 'text-rose-400',
+        });
+      }
+    }
+
     setComponents(initialComponents);
-  }, [employee]);
+  }, [employee, applySelfEmployedTax, taxPercent]);
 
   useEffect(() => {
     if (open) {
@@ -288,16 +326,43 @@ export function PaymentBreakdownDialog({
 
   const calculateTotal = () => {
     return components
-      .filter((c) => !paidComponents.has(c.id) && c.id !== 'base_salary')
+      .filter((c) => !paidComponents.has(c.id) && c.id !== 'base_salary' && c.id !== 'self_employed_tax')
       .reduce((sum, c) => sum + getComponentAmount(c), 0);
   };
 
   const handlePayAll = () => {
-    const unpaidComponents = components.filter((c) => !paidComponents.has(c.id) && c.id !== 'base_salary');
-    if (unpaidComponents.length === 0) return;
+    // 1. Pay self-employed tax first (separate transaction)
+    const taxComponent = components.find(c => c.id === 'self_employed_tax');
+    if (taxComponent && !paidComponents.has('self_employed_tax') && applySelfEmployedTax) {
+      const taxAmount = Math.abs(getComponentAmount(taxComponent));
+      if (taxAmount > 0) {
+        onPaymentComplete({
+          type: 'expense',
+          category: 'payroll_self_employed_tax',
+          description: `Налог самозанятого за ${format(new Date(), 'LLLL yyyy', { locale: ru })} — ${employee.full_name}`,
+          amount: taxAmount,
+          account_type: accountType,
+          related_user_id: employee.id,
+        });
+        setPaidComponents(prev => {
+          const newSet = new Set(prev);
+          newSet.add('self_employed_tax');
+          return newSet;
+        });
+      }
+    }
+
+    const unpaidComponents = components.filter((c) => !paidComponents.has(c.id) && c.id !== 'base_salary' && c.id !== 'self_employed_tax');
+    if (unpaidComponents.length === 0) {
+      setOpen(false);
+      return;
+    }
 
     const totalValue = calculateTotal();
-    if (totalValue <= 0) return;
+    if (totalValue <= 0) {
+      setOpen(false);
+      return;
+    }
 
     const allDetails = unpaidComponents
       .map(c => `${c.label}: ${getComponentAmount(c).toLocaleString('ru-RU')} ₽`)
@@ -362,6 +427,17 @@ export function PaymentBreakdownDialog({
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+              <Checkbox
+                id="apply-self-employed-tax"
+                checked={applySelfEmployedTax}
+                onCheckedChange={(v) => setApplySelfEmployedTax(v === true)}
+              />
+              <Label htmlFor="apply-self-employed-tax" className="text-sm text-white/80 font-medium cursor-pointer">
+                Удержать налог самозанятого ({taxPercent}%)
+              </Label>
             </div>
 
             <div className="space-y-4">
@@ -458,6 +534,28 @@ export function PaymentBreakdownDialog({
                             Выплатить оклад
                           </Button>
                         )}
+                      </div>
+                    );
+                  }
+
+                  if (component.id === 'self_employed_tax') {
+                    return (
+                      <div
+                        key={component.id}
+                        className={`group relative flex items-center gap-3 py-2 px-3 sm:py-2.5 sm:px-3.5 rounded-2xl border transition-all duration-200 ${
+                          isPaid ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.02] border-white/5'
+                        }`}
+                      >
+                        <div className="h-8 w-8 flex-shrink-0" aria-hidden />
+                        <div className="flex-1 min-w-0">
+                          <Label className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 block ${component.color}`}>
+                            {component.label}
+                          </Label>
+                          <span className="text-base font-mono font-bold text-white inline-flex items-baseline gap-1 tabular-nums">
+                            {amount.toLocaleString('ru-RU')}{' '}
+                            <span className="text-white/30 text-xs font-normal leading-none">₽</span>
+                          </span>
+                        </div>
                       </div>
                     );
                   }
