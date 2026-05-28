@@ -31,7 +31,7 @@ jobs:
           tar -czf deploy.tar.gz \
             dist \
             backend/src backend/package.json backend/package-lock.json backend/Dockerfile \
-            docker-compose.prod.yml nginx .env
+            docker-compose.prod.yml nginx
 
       - name: Upload archive to server
         uses: appleboy/scp-action@v0.1.7
