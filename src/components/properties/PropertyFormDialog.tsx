@@ -962,19 +962,13 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
 
   // Dirty-check state
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
-  const initialFormRef = useRef<PropertyCreate | null>(null);
-  const initialPhotosRef = useRef<{file: File; id: string; preview: string}[]>([]);
-  const initialClientRef = useRef<{ id: string; full_name: string; phone: string } | null>(null);
-  const initialNewClientRef = useRef<{ full_name: string; phone: string; birthday?: string; comment?: string } | null>(null);
+  const [initialSnapshot, setInitialSnapshot] = useState('');
 
   const isDirty = useMemo(() => {
-    if (!initialFormRef.current) return false;
-    const formChanged = JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
-    const photosChanged = photos.length !== initialPhotosRef.current.length;
-    const clientChanged = (selectedClient?.id || '') !== (initialClientRef.current?.id || '');
-    const newClientChanged = !!newClientData !== !!initialNewClientRef.current || (newClientData && JSON.stringify(newClientData) !== JSON.stringify(initialNewClientRef.current));
-    return formChanged || photosChanged || clientChanged || newClientChanged;
-  }, [form, photos, selectedClient, newClientData]);
+    if (!initialSnapshot) return false;
+    const current = JSON.stringify({ form, photos, client: selectedClient, newClient: newClientData });
+    return current !== initialSnapshot;
+  }, [form, photos, selectedClient, newClientData, initialSnapshot]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && isDirty) {
@@ -1028,10 +1022,20 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
       setSelectedClient(initialClient);
 
       // Save snapshot for dirty-check
-      initialFormRef.current = JSON.parse(JSON.stringify(nextForm));
-      initialPhotosRef.current = [];
-      initialClientRef.current = initialClient ? { ...initialClient } : null;
-      initialNewClientRef.current = null;
+      const initialPhotos = initialData?.photos && initialData.photos.length > 0
+        ? initialData.photos.map((p: any) => ({
+            id: p.id,
+            preview: p.file_url,
+            isExisting: true,
+            dbId: p.id
+          }))
+        : [];
+      setInitialSnapshot(JSON.stringify({
+        form: nextForm,
+        photos: initialPhotos,
+        client: initialClient,
+        newClient: null
+      }));
     }
     wasOpenRef.current = open;
   }, [open, buildInitial, initialData]);
@@ -1040,18 +1044,33 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
   useEffect(() => {
     if (!open || !initialData?.id || initialData.photos) return;
     let cancelled = false;
-    localAPI.request(`/properties/${initialData.id}`).then(({ data }) => {
-      if (cancelled || !data) return;
+    localAPI.request(`/properties/${initialData.id}`).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.error('Failed to load property detail:', error);
+        return;
+      }
+      if (!data) return;
       const detail = data as any;
       if (detail.photos && Array.isArray(detail.photos)) {
-        setPhotos(detail.photos.map((p: any) => ({
+        const loadedPhotos = detail.photos.map((p: any) => ({
           id: p.id,
           preview: p.file_url,
           isExisting: true,
           dbId: p.id
-        })));
+        }));
+        setPhotos(loadedPhotos);
+        // Update snapshot so loaded photos don't count as dirty
+        setInitialSnapshot(prev => {
+          if (!prev) return prev;
+          const snap = JSON.parse(prev);
+          snap.photos = loadedPhotos;
+          return JSON.stringify(snap);
+        });
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error('Exception loading property detail:', err);
+    });
     return () => { cancelled = true; };
   }, [open, initialData]);
 
@@ -1078,6 +1097,14 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
     if (String(form.client_id || '') !== resolved.id) {
       setFormField('client_id', resolved.id);
     }
+    // Update snapshot so linked-client resolution doesn't count as dirty
+    setInitialSnapshot(prev => {
+      if (!prev) return prev;
+      const snap = JSON.parse(prev);
+      snap.form.client_id = resolved.id;
+      snap.client = resolved;
+      return JSON.stringify(snap);
+    });
   }, [open, linkedClient?.id, linkedClient?.full_name, linkedClient?.phone, form.client_id, setFormField]);
 
   // ── Category helpers ────────────────────────────────────────────────────
@@ -1157,42 +1184,7 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
       }
       const newPhotos = photos.filter(p => p.file).map(p => p.file!);
       await onSubmit(formData, newPhotos.length > 0 ? newPhotos : undefined, newClientData || undefined);
-
-      // After saving, if editing and new photos were uploaded, fetch the updated
-      // photo list and send a reorder request so the final order matches the UI.
-      if (initialData?.id && newPhotos.length > 0) {
-        try {
-          const { data: detail } = await localAPI.request(`/properties/${initialData.id}`);
-          const detailPhotos = (detail as any)?.photos || [];
-          const oldCount = photos.length - newPhotos.length;
-          // New photos are appended at the end by the backend in the same order
-          // they were sent (the order of the `newPhotos` array).
-          const newDetailPhotos = detailPhotos.slice(oldCount);
-          const newPhotoMap = new Map<string, string>();
-          const newPhotosInUi = photos.filter(p => p.file);
-          newPhotosInUi.forEach((p, idx) => {
-            newPhotoMap.set(p.id, newDetailPhotos[idx]?.id);
-          });
-          const photoIds = photos.map(p => {
-            if (p.isExisting && p.dbId) return p.dbId;
-            return newPhotoMap.get(p.id);
-          }).filter(Boolean) as string[];
-          if (photoIds.length > 0) {
-            await localAPI.request(`/properties/${initialData.id}/photos/reorder`, {
-              method: 'PUT',
-              body: { photo_ids: photoIds }
-            });
-          }
-        } catch (err) {
-          console.error('[PropertyFormDialog] failed to reorder after upload:', err);
-        }
-      }
-
-      // Reset dirty state so closing doesn't trigger discard dialog after successful save
-      initialFormRef.current = { ...formData };
-      initialPhotosRef.current = [...photos];
-      initialClientRef.current = selectedClient;
-      initialNewClientRef.current = newClientData;
+      onOpenChange(false);
     } finally {
       isSubmittingRef.current = false;
     }

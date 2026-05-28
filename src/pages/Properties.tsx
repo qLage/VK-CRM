@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { useProperties, Property, PropertyFilters } from '@/hooks/useProperties';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -906,7 +907,10 @@ export default function Properties() {
             for (const photo of photos) {
               formData.append('photos', photo);
             }
-            await localAPI.upload(`/properties/${result.id}/photos`, formData);
+            const { error: uploadErr } = await localAPI.upload(`/properties/${result.id}/photos`, formData);
+            if (uploadErr) {
+              toast.error('Ошибка загрузки фото: ' + (uploadErr as any)?.message);
+            }
           }
           // Invalidate detail cache so photos appear immediately when opening the dialog
           if (result?.id) {
@@ -933,7 +937,10 @@ export default function Properties() {
               for (const photo of photos) {
                 formData.append('photos', photo);
               }
-              await localAPI.upload(`/properties/${editProperty.id}/photos`, formData);
+              const { error: uploadErr } = await localAPI.upload(`/properties/${editProperty.id}/photos`, formData);
+              if (uploadErr) {
+                toast.error('Ошибка загрузки фото: ' + (uploadErr as any)?.message);
+              }
               queryClient.invalidateQueries({ queryKey: ['property-detail', editProperty.id] });
               queryClient.invalidateQueries({ queryKey: ['properties'] });
             }

@@ -326,7 +326,7 @@ export function PaymentBreakdownDialog({
 
   const calculateTotal = () => {
     return components
-      .filter((c) => !paidComponents.has(c.id) && c.id !== 'base_salary' && c.id !== 'self_employed_tax')
+      .filter((c) => !paidComponents.has(c.id) && c.id !== 'base_salary')
       .reduce((sum, c) => sum + getComponentAmount(c), 0);
   };
 
