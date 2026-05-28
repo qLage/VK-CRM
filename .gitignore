@@ -1,0 +1,45 @@
+# Logs / artifacts
+node_modules/
+dist/
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Env (DO NOT commit secrets)
+.env
+.env.development
+.env.production
+.env.local
+backend/.env
+
+# DB dumps
+db_backup/
+*.bin
+*.sql.gz
+
+# Diagnostic scripts (root-level junk)
+check_*.js
+check_*.py
+db_check_script.js
+db_fix.js
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Build artifacts
+*.tsbuildinfo
+coverage/
+
+# Backups
+crm_backup.tar.gz
+CRM_download.tar.gz
+
+# Storage downloads (S3 backups, large binaries)
+backend/backend/storage/downloads/
+backend/storage/downloads/
+
+# Playwright artifacts / logs
+.playwright-mcp/
+

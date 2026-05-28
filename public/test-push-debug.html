@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Push Notifications Debug</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .status { margin: 10px 0; padding: 10px; background: #2a2a2a; border-radius: 4px; }
+        .ok { color: #0f0; }
+        .error { color: #f00; }
+        .warning { color: #ff0; }
+        button { margin: 5px; padding: 10px 20px; cursor: pointer; }
+        pre { background: #000; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔔 Push Notifications Debug</h1>
+    <div id="output"></div>
+    <button onclick="runTests()">Run Tests</button>
+    <button onclick="testSubscribe()">Test Subscribe</button>
+    <button onclick="testSendPush()">Test Send Push</button>
+
+    <script>
+        const VAPID_PUBLIC = 'BI7j1uKT7woDFBzIgcA00UBVUrUGTxeAa43HnZg2qwyFSrxJzXOa2PdTvCUBW3uUitb42d1JQbSUifTIBgfqgig';
+        const API_URL = 'http://localhost:5000/api';
+
+        function log(msg, type = 'info') {
+            const output = document.getElementById('output');
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = msg;
+            output.appendChild(div);
+        }
+
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        async function runTests() {
+            document.getElementById('output').innerHTML = '';
+
+            log('🔍 Starting diagnostics...', 'info');
+
+            // Test 1: Service Worker support
+            if ('serviceWorker' in navigator) {
+                log('✅ Service Worker supported', 'ok');
+            } else {
+                log('❌ Service Worker NOT supported', 'error');
+                return;
+            }
+
+            // Test 2: Push Manager support
+            if ('PushManager' in window) {
+                log('✅ Push Manager supported', 'ok');
+            } else {
+                log('❌ Push Manager NOT supported', 'error');
+                return;
+            }
+
+            // Test 3: Notification permission
+            log(`📋 Notification permission: ${Notification.permission}`,
+                Notification.permission === 'granted' ? 'ok' : 'warning');
+
+            // Test 4: Service Worker registration
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                log(`📝 Service Worker registrations: ${registrations.length}`,
+                    registrations.length > 0 ? 'ok' : 'warning');
+
+                if (registrations.length > 0) {
+                    registrations.forEach((reg, i) => {
+                        log(`  SW ${i + 1}: ${reg.scope}`, 'info');
+                        log(`  Active: ${!!reg.active}`, reg.active ? 'ok' : 'warning');
+                    });
+                }
+
+                const reg = await navigator.serviceWorker.ready;
+                log('✅ Service Worker ready', 'ok');
+
+                // Test 5: Current subscription
+                const sub = await reg.pushManager.getSubscription();
+                if (sub) {
+                    log('✅ Already subscribed to push', 'ok');
+                    log(`<pre>${JSON.stringify(sub.toJSON(), null, 2)}</pre>`, 'info');
+                } else {
+                    log('⚠️ Not subscribed to push yet', 'warning');
+                }
+
+            } catch (error) {
+                log(`❌ Service Worker error: ${error.message}`, 'error');
+            }
+
+            // Test 6: Backend connectivity
+            try {
+                const response = await fetch(`${API_URL}/push/vapid-public-key`);
+                const data = await response.json();
+                log('✅ Backend reachable', 'ok');
+                log(`VAPID key matches: ${data.publicKey === VAPID_PUBLIC}`,
+                    data.publicKey === VAPID_PUBLIC ? 'ok' : 'error');
+            } catch (error) {
+                log(`❌ Backend error: ${error.message}`, 'error');
+            }
+
+            // Test 7: Auth token
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                log('✅ Auth token present', 'ok');
+            } else {
+                log('⚠️ No auth token (need to login first)', 'warning');
+            }
+        }
+
+        async function testSubscribe() {
+            log('🔔 Testing subscription...', 'info');
+
+            try {
+                // Request permission
+                const permission = await Notification.requestPermission();
+                log(`Permission: ${permission}`, permission === 'granted' ? 'ok' : 'error');
+
+                if (permission !== 'granted') {
+                    log('❌ Permission denied', 'error');
+                    return;
+                }
+
+                // Get service worker
+                const reg = await navigator.serviceWorker.ready;
+                log('✅ Service Worker ready', 'ok');
+
+                // Subscribe
+                const sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC)
+                });
+                log('✅ Push subscription created', 'ok');
+
+                const json = sub.toJSON();
+                log(`<pre>${JSON.stringify(json, null, 2)}</pre>`, 'info');
+
+                // Send to backend
+                const token = localStorage.getItem('auth_token');
+                if (!token) {
+                    log('⚠️ No auth token - cannot save to backend', 'warning');
+                    return;
+                }
+
+                const response = await fetch(`${API_URL}/push/subscribe`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        endpoint: json.endpoint,
+                        keys: json.keys
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    log('✅ Subscription saved to backend', 'ok');
+                } else {
+                    log(`❌ Backend error: ${JSON.stringify(result)}`, 'error');
+                }
+
+            } catch (error) {
+                log(`❌ Subscription error: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        async function testSendPush() {
+            log('📤 Testing push send...', 'info');
+
+            const token = localStorage.getItem('auth_token');
+            if (!token) {
+                log('❌ No auth token - login first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/push/test-direct`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        title: 'Test Push',
+                        body: 'This is a test notification',
+                        url: '/'
+                    })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    log('✅ Push sent successfully', 'ok');
+                } else {
+                    log(`❌ Push error: ${JSON.stringify(result)}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Request error: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-run on load
+        window.addEventListener('load', runTests);
+    </script>
+</body>
+</html>

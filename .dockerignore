@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.env.development
+db_backup
+*.log
+.vscode
+.idea
+crm_backup.tar.gz
+CRM_download.tar.gz
