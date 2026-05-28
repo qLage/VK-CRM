@@ -22,6 +22,7 @@ import { formatPhoneRu } from '@/lib/phone-utils';
 import { localAPI } from '@/integrations/localAPI';
 import { useAuth } from '@/hooks/useAuth';
 import { useClient, useClientSearch, useClientAccessCheck } from '@/hooks/useClients';
+import { compressImages, type CompressedPhoto } from '@/lib/imageCompress';
 import Sortable from 'sortablejs';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -952,6 +953,8 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
 
   const [form, setForm] = useState<PropertyCreate>(buildInitial);
   const [photos, setPhotos] = useState<{file?: File; id: string; preview: string; isExisting?: boolean; dbId?: string}[]>([]);
+  const [compressing, setCompressing] = useState(false);
+  const [compressProgress, setCompressProgress] = useState({ done: 0, total: 0 });
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<{ id: string; full_name: string; phone: string } | null>(null);
   const [newClientData, setNewClientData] = useState<{ full_name: string; phone: string; birthday?: string; comment?: string } | null>(null);
@@ -1000,7 +1003,7 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
     if (open && !wasOpenRef.current) {
       const nextForm = buildInitial();
       setForm(nextForm);
-      photos.forEach(p => { if (!p.isExisting) URL.revokeObjectURL(p.preview); });
+      photos.forEach(p => { if (!p.isExisting && p.preview.startsWith('blob:')) URL.revokeObjectURL(p.preview); });
       if (initialData?.photos && initialData.photos.length > 0) {
         setPhotos(initialData.photos.map(p => ({
           id: p.id,
@@ -1760,15 +1763,26 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={e => {
+                  onChange={async (e) => {
                     const files = e.target.files;
-                    if (files) {
-                      const newPhotos = Array.from(files).map(file => ({
-                        file,
-                        id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                        preview: URL.createObjectURL(file)
+                    if (!files || files.length === 0) return;
+                    setCompressing(true);
+                    setCompressProgress({ done: 0, total: files.length });
+                    try {
+                      const compressed = await compressImages(Array.from(files), (done, total) =>
+                        setCompressProgress({ done, total })
+                      );
+                      const newPhotos = compressed.map((c: CompressedPhoto) => ({
+                        file: c.file,
+                        id: `${c.originalName}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                        preview: c.thumbnail,
                       }));
-                      setPhotos(prev => [...prev, ...newPhotos]);
+                      setPhotos((prev) => [...prev, ...newPhotos]);
+                    } catch (err) {
+                      console.error('Photo compression error:', err);
+                    } finally {
+                      setCompressing(false);
+                      setCompressProgress({ done: 0, total: 0 });
                     }
                     e.target.value = '';
                   }}
@@ -1777,10 +1791,23 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
                 />
                 <label
                   htmlFor="photo-upload"
-                  className="flex items-center justify-center gap-2 h-16 rounded-2xl bg-white/[0.02] border-2 border-dashed border-white/10 text-white/50 hover:text-white/80 hover:border-primary/40 hover:bg-primary/5 cursor-pointer transition-all text-xs font-bold uppercase tracking-widest"
+                  className={`flex items-center justify-center gap-2 h-16 rounded-2xl border-2 border-dashed text-xs font-bold uppercase tracking-widest transition-all ${
+                    compressing
+                      ? 'bg-primary/5 border-primary/30 text-primary cursor-wait'
+                      : 'bg-white/[0.02] border-white/10 text-white/50 hover:text-white/80 hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
+                  }`}
                 >
-                  <PhotoIcon className="h-5 w-5" />
-                  Нажмите или перетащите фото ({photos.length}/50)
+                  {compressing ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Сжатие фото {compressProgress.done}/{compressProgress.total}…
+                    </>
+                  ) : (
+                    <>
+                      <PhotoIcon className="h-5 w-5" />
+                      Нажмите или перетащите фото ({photos.length}/50)
+                    </>
+                  )}
                 </label>
                 {photos.length > 0 && (
                   <PhotoSortableGrid

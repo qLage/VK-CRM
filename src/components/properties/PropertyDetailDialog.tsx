@@ -100,8 +100,9 @@ export function PropertyDetailDialog({ open, onOpenChange, propertyId, onEdit, o
     if (!property) return;
     setUploading(true);
     try {
+      const compressed = await compressImages(Array.from(files));
       const formData = new FormData();
-      Array.from(files).forEach(f => formData.append('photos', f));
+      compressed.forEach((c) => formData.append('photos', c.file));
       const token = localStorage.getItem('auth_token');
       const base = import.meta.env.PROD ? '/api' : (import.meta.env.VITE_API_URL || `${window.location.protocol}//127.0.0.1:5000/api`);
       const resp = await fetch(`${base}/properties/${property.id}/photos`, {
