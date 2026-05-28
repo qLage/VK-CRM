@@ -1,0 +1,60 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main, master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Backend
+        run: |
+          cd backend
+          npm ci
+          npm run build
+
+      - name: Create deployment archive
+        run: |
+          tar -czf deploy.tar.gz \
+            dist \
+            backend/src backend/package.json backend/package-lock.json backend/Dockerfile \
+            docker-compose.prod.yml nginx .env
+
+      - name: Upload archive to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: "deploy.tar.gz"
+          target: "/root/CRM"
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            cd /root/CRM
+            tar -xzf deploy.tar.gz
+            rm -f deploy.tar.gz
+            docker compose -f docker-compose.prod.yml build --no-cache frontend backend
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
+            echo "=== Status ==="
+            docker ps --filter name=crm- --format 'table {{.Names}}\t{{.Status}}'
