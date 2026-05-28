@@ -9,6 +9,7 @@ export type PayrollOrgSettingsRow = {
     ndfl_percent: number;
     advance_percent: number;
     insurance_percent: number;
+    self_employed_tax_percent: number;
     base_salary_sales_manager: number;
     base_salary_head_sales: number;
     base_salary_commercial: number;
@@ -28,6 +29,7 @@ const DEFAULT_PAYROLL: PayrollOrgSettingsRow = {
     ndfl_percent: 13,
     advance_percent: 40,
     insurance_percent: 30,
+    self_employed_tax_percent: 6,
     base_salary_sales_manager: 0,
     base_salary_head_sales: 0,
     base_salary_commercial: 0,
@@ -110,6 +112,7 @@ export async function getPayrollOrgSettingsApiResponse(
         ndfl_percent: merged.ndfl_percent,
         advance_percent: merged.advance_percent,
         insurance_percent: merged.insurance_percent,
+        self_employed_tax_percent: merged.self_employed_tax_percent,
         base_salary_sales_manager: merged.base_salary_sales_manager,
         base_salary_head_sales: merged.base_salary_head_sales,
         base_salary_commercial: merged.base_salary_commercial,
@@ -121,7 +124,7 @@ export async function getPayrollOrgSettings(companyId: string): Promise<PayrollO
     if (!payrollPersistEnabled()) return { ...DEFAULT_PAYROLL };
 
     const r = await query(
-        `SELECT ndfl_percent, advance_percent, insurance_percent,
+        `SELECT ndfl_percent, advance_percent, insurance_percent, self_employed_tax_percent,
                 base_salary_sales_manager, base_salary_head_sales, base_salary_commercial
          FROM company_payroll_settings WHERE company_id = $1`,
         [companyId],
@@ -133,6 +136,7 @@ export async function getPayrollOrgSettings(companyId: string): Promise<PayrollO
         ndfl_percent: rub(row.ndfl_percent ?? DEFAULT_PAYROLL.ndfl_percent),
         advance_percent: rub(row.advance_percent ?? DEFAULT_PAYROLL.advance_percent),
         insurance_percent: rub(row.insurance_percent ?? DEFAULT_PAYROLL.insurance_percent),
+        self_employed_tax_percent: rub(row.self_employed_tax_percent ?? DEFAULT_PAYROLL.self_employed_tax_percent),
         base_salary_sales_manager: rub(row.base_salary_sales_manager ?? 0),
         base_salary_head_sales: rub(row.base_salary_head_sales ?? 0),
         base_salary_commercial: rub(row.base_salary_commercial ?? 0),
@@ -147,13 +151,14 @@ export async function upsertPayrollOrgSettings(
     const next = { ...cur, ...patch };
     await query(
         `INSERT INTO company_payroll_settings (
-            company_id, ndfl_percent, advance_percent, insurance_percent,
+            company_id, ndfl_percent, advance_percent, insurance_percent, self_employed_tax_percent,
             base_salary_sales_manager, base_salary_head_sales, base_salary_commercial, updated_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          ON CONFLICT (company_id) DO UPDATE SET
             ndfl_percent = EXCLUDED.ndfl_percent,
             advance_percent = EXCLUDED.advance_percent,
             insurance_percent = EXCLUDED.insurance_percent,
+            self_employed_tax_percent = EXCLUDED.self_employed_tax_percent,
             base_salary_sales_manager = EXCLUDED.base_salary_sales_manager,
             base_salary_head_sales = EXCLUDED.base_salary_head_sales,
             base_salary_commercial = EXCLUDED.base_salary_commercial,
@@ -163,6 +168,7 @@ export async function upsertPayrollOrgSettings(
             next.ndfl_percent,
             next.advance_percent,
             next.insurance_percent,
+            next.self_employed_tax_percent,
             next.base_salary_sales_manager,
             next.base_salary_head_sales,
             next.base_salary_commercial,
@@ -207,6 +213,7 @@ export type PayrollMonthlyStateRow = {
     advance_gross_paid: number;
     ndfl_from_advance: number;
     ndfl_from_remainder: number;
+    self_employed_tax_paid: number;
 };
 
 export async function loadPayrollMonthlyState(
@@ -216,10 +223,10 @@ export async function loadPayrollMonthlyState(
     m: number,
 ): Promise<PayrollMonthlyStateRow> {
     if (!payrollPersistEnabled())
-        return { advance_gross_paid: 0, ndfl_from_advance: 0, ndfl_from_remainder: 0 };
+        return { advance_gross_paid: 0, ndfl_from_advance: 0, ndfl_from_remainder: 0, self_employed_tax_paid: 0 };
 
     const r = await query(
-        `SELECT advance_gross_paid, ndfl_from_advance, ndfl_from_remainder
+        `SELECT advance_gross_paid, ndfl_from_advance, ndfl_from_remainder, self_employed_tax_paid
          FROM payroll_monthly_state
          WHERE company_id = $1 AND profile_id = $2 AND payroll_year = $3 AND payroll_month = $4`,
         [companyId, profileId, y, m],
@@ -229,6 +236,7 @@ export async function loadPayrollMonthlyState(
         advance_gross_paid: rub(row?.advance_gross_paid ?? 0),
         ndfl_from_advance: rub(row?.ndfl_from_advance ?? 0),
         ndfl_from_remainder: rub(row?.ndfl_from_remainder ?? 0),
+        self_employed_tax_paid: rub(row?.self_employed_tax_paid ?? 0),
     };
 }
 
@@ -247,12 +255,13 @@ export async function upsertPayrollMonthlyState(
     await query(
         `INSERT INTO payroll_monthly_state (
            company_id, profile_id, payroll_year, payroll_month,
-           advance_gross_paid, ndfl_from_advance, ndfl_from_remainder, updated_at
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           advance_gross_paid, ndfl_from_advance, ndfl_from_remainder, self_employed_tax_paid, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          ON CONFLICT (company_id, profile_id, payroll_year, payroll_month) DO UPDATE SET
            advance_gross_paid = EXCLUDED.advance_gross_paid,
            ndfl_from_advance = EXCLUDED.ndfl_from_advance,
            ndfl_from_remainder = EXCLUDED.ndfl_from_remainder,
+           self_employed_tax_paid = EXCLUDED.self_employed_tax_paid,
            updated_at = EXCLUDED.updated_at`,
         [
             companyId,
@@ -262,6 +271,7 @@ export async function upsertPayrollMonthlyState(
             merged.advance_gross_paid,
             merged.ndfl_from_advance,
             merged.ndfl_from_remainder,
+            merged.self_employed_tax_paid,
             new Date().toISOString(),
         ],
     );
@@ -320,9 +330,11 @@ export type PayrollAmounts = {
     total_ndfl_on_oklad: number;
     ndfl_on_remainder: number;
     net_remainder_to_employee: number;
+    /** Налог самозанятого (шаг 3.5). */
+    self_employed_tax_amount: number;
     /** Бюджетный НДФЛ после аванса (шаг 2 последовательности за выбранный расчётный месяц). */
     ndfl_budget_1_from_advance: number;
-    /** Бюджетный НДФЛ после остатка (шаг 4). Совпадает с ndfl_on_remainder для этого месяца. */
+    /** Бюджетный НДФЛ после остатка (шаг 5). Совпадает с ndfl_on_remainder для этого месяца. */
     ndfl_budget_2_from_remainder: number;
     insurance_company_cost: number;
 };
@@ -337,6 +349,7 @@ export const PAYROLL_PAYOUT_SEQUENCE = [
     'advance',
     'ndfl_budget_1',
     'remainder',
+    'self_employed_tax',
     'ndfl_budget_2',
     'insurance_contributions',
 ] as const;
@@ -347,6 +360,7 @@ const PAYROLL_STEP_LABEL_RU: Record<PayrollPayoutActionKind, string> = {
     advance: 'Аванс',
     ndfl_budget_1: 'НДФЛ 1 (с аванса)',
     remainder: 'Остаток зарплаты',
+    self_employed_tax: 'Налог самозанятого',
     ndfl_budget_2: 'НДФЛ 2 (с остатка)',
     insurance_contributions: 'Страховые взносы',
 };
@@ -379,6 +393,7 @@ export function computePayrollAmounts(
     ps: PayrollOrgSettingsRow,
     stateMonth: PayrollMonthlyStateRow,
     payoutRecorded?: Partial<Record<PayrollPayoutActionKind, boolean>>,
+    applySelfEmployedTax = true,
 ): PayrollAmounts {
     const brutto = rub(grossOklad);
     const pNdfl = (ps.ndfl_percent || 0) / 100;
@@ -424,6 +439,10 @@ export function computePayrollAmounts(
         ndflBudget1FromAdvance = attributedNdflOnAdvancePortionOfMonth;
     }
 
+    const pSelfTax = (ps.self_employed_tax_percent || 0) / 100;
+    const selfEmployedTax = applySelfEmployedTax ? rub(netRem * pSelfTax) : 0;
+    const netRemAfterSelfTax = rub(netRem - selfEmployedTax);
+
     return {
         oklad_brutto: brutto,
         advance_brutto: advanceBruttoFresh,
@@ -433,6 +452,7 @@ export function computePayrollAmounts(
         total_ndfl_on_oklad: totalNdfl,
         ndfl_on_remainder: ndflRemainder,
         net_remainder_to_employee: netRem,
+        self_employed_tax_amount: selfEmployedTax,
         ndfl_budget_1_from_advance: rub(ndflBudget1FromAdvance),
         ndfl_budget_2_from_remainder: rub(ndflRemainder),
         insurance_company_cost: rub(brutto * pIns),

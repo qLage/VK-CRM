@@ -282,6 +282,41 @@ const runInitialMigrations = async (): Promise<void> => {
         } catch (error) {
             console.error('❌ Error updating KPI Materialized Views:', error instanceof Error ? error.message : error);
         }
+
+        // --- Self-employed tax percent column (Added 2026-05-28) ---
+        try {
+            await pool.query(`
+                ALTER TABLE company_payroll_settings
+                ADD COLUMN IF NOT EXISTS self_employed_tax_percent REAL NOT NULL DEFAULT 6
+            `);
+            console.log('✅ Migration OK: self_employed_tax_percent column added');
+        } catch (e) {
+            console.error('❌ Failed to add self_employed_tax_percent column:', e);
+        }
+
+        // Extend payroll_payout_actions CHECK constraint
+        try {
+            await pool.query(`
+                ALTER TABLE payroll_payout_actions
+                DROP CONSTRAINT IF EXISTS payroll_payout_actions_kind_check
+            `);
+            await pool.query(`
+                ALTER TABLE payroll_payout_actions
+                ADD CONSTRAINT payroll_payout_actions_kind_check CHECK (
+                    action_kind IN (
+                        'advance',
+                        'ndfl_budget_1',
+                        'remainder',
+                        'ndfl_budget_2',
+                        'insurance_contributions',
+                        'self_employed_tax'
+                    )
+                )
+            `);
+            console.log('✅ Migration OK: payroll_payout_actions constraint updated');
+        } catch (e) {
+            console.error('❌ Failed to update payroll_payout_actions constraint:', e);
+        }
     }
 };
 

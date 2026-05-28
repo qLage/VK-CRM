@@ -1268,6 +1268,8 @@ router.patch('/payroll-org-settings', authenticateToken, requirePermission('can_
             patch.advance_percent = rub(parseFloat(String(b.advance_percent)));
         if (b.insurance_percent !== undefined && b.insurance_percent !== null)
             patch.insurance_percent = rub(parseFloat(String(b.insurance_percent)));
+        if (b.self_employed_tax_percent !== undefined && b.self_employed_tax_percent !== null)
+            patch.self_employed_tax_percent = rub(parseFloat(String(b.self_employed_tax_percent)));
         if (b.base_salary_sales_manager !== undefined && b.base_salary_sales_manager !== null)
             patch.base_salary_sales_manager = rub(parseFloat(String(b.base_salary_sales_manager)));
         if (b.base_salary_head_sales !== undefined && b.base_salary_head_sales !== null)
@@ -1310,12 +1312,13 @@ router.get('/payroll-preview', authenticateToken, requirePermission('can_view_fi
         const oklad = await resolveEmployeeMonthlyOklad(companyId, uid);
         const st = await loadPayrollMonthlyState(companyId, uid, y, m);
 
-        const [paidAdvance, paidNdfl1, paidRemainder, paidNdfl2, paidIns] = await Promise.all([
+        const [paidAdvance, paidNdfl1, paidRemainder, paidNdfl2, paidIns, paidSelfEmployedTax] = await Promise.all([
             payoutActionExists(companyId, uid, y, m, 'advance'),
             payoutActionExists(companyId, uid, y, m, 'ndfl_budget_1'),
             payoutActionExists(companyId, uid, y, m, 'remainder'),
             payoutActionExists(companyId, uid, y, m, 'ndfl_budget_2'),
             payoutActionExists(companyId, uid, y, m, 'insurance_contributions'),
+            payoutActionExists(companyId, uid, y, m, 'self_employed_tax'),
         ]);
 
         const paid = {
@@ -1324,9 +1327,11 @@ router.get('/payroll-preview', authenticateToken, requirePermission('can_view_fi
             ndfl_budget_1: paidNdfl1,
             ndfl_budget_2: paidNdfl2,
             insurance_contributions: paidIns,
+            self_employed_tax: paidSelfEmployedTax,
         };
 
-        const amounts = computePayrollAmounts(oklad, org, st, paid);
+        const applySelfEmployedTax = req.query.apply_self_employed_tax !== 'false';
+        const amounts = computePayrollAmounts(oklad, org, st, paid, applySelfEmployedTax);
 
         const step_done = { ...paid };
 
@@ -1376,7 +1381,7 @@ router.post(
         body('payroll_year').isInt({ min: 2000, max: 2100 }),
         body('payroll_month').isInt({ min: 1, max: 12 }),
         body('account_type').optional().isIn(['cash', 'account']),
-        body('action').isIn(['advance', 'remainder', 'ndfl_budget_1', 'ndfl_budget_2', 'insurance_contributions']),
+        body('action').isIn(['advance', 'remainder', 'ndfl_budget_1', 'ndfl_budget_2', 'insurance_contributions', 'self_employed_tax']),
     ],
     async (req: Request, res: Response): Promise<void> => {
         try {
@@ -1416,12 +1421,13 @@ router.post(
 
             const st = await loadPayrollMonthlyState(companyId, userId, y, m);
 
-            const [paidAdvance, paidNdfl1, paidRemainder, paidNdfl2, paidIns] = await Promise.all([
+            const [paidAdvance, paidNdfl1, paidRemainder, paidNdfl2, paidIns, paidSelfEmployedTax] = await Promise.all([
                 payoutActionExists(companyId, userId, y, m, 'advance'),
                 payoutActionExists(companyId, userId, y, m, 'ndfl_budget_1'),
                 payoutActionExists(companyId, userId, y, m, 'remainder'),
                 payoutActionExists(companyId, userId, y, m, 'ndfl_budget_2'),
                 payoutActionExists(companyId, userId, y, m, 'insurance_contributions'),
+                payoutActionExists(companyId, userId, y, m, 'self_employed_tax'),
             ]);
 
             const paidLookup = {
@@ -1430,9 +1436,11 @@ router.post(
                 ndfl_budget_1: paidNdfl1,
                 ndfl_budget_2: paidNdfl2,
                 insurance_contributions: paidIns,
+                self_employed_tax: paidSelfEmployedTax,
             };
 
-            const amounts = computePayrollAmounts(oklad, org, st, paidLookup);
+            const applySelfEmployedTax = req.body.apply_self_employed_tax !== false;
+            const amounts = computePayrollAmounts(oklad, org, st, paidLookup, applySelfEmployedTax);
 
             const stepDone: Partial<Record<PayrollPayoutActionKind, boolean>> = {
                 advance: paidAdvance,
@@ -1440,6 +1448,7 @@ router.post(
                 remainder: paidRemainder,
                 ndfl_budget_2: paidNdfl2,
                 insurance_contributions: paidIns,
+                self_employed_tax: paidSelfEmployedTax,
             };
 
             const actionKind = action as PayrollPayoutActionKind;
@@ -1591,6 +1600,26 @@ router.post(
                     m,
                     'ndfl_budget_2',
                 );
+            } else if (action === 'self_employed_tax') {
+                const amt = amounts.self_employed_tax_amount;
+                if (amt <= 0) {
+                    res.status(400).json({ error: { message: 'Сумма налога самозанятого не положительна.' } });
+                    return;
+                }
+                const desc = `Налог самозанятого за ${periodRu} — ${empName}${tagSuffix}`;
+                txDescription = desc;
+                result = await insertTx(
+                    {
+                        type: 'expense',
+                        category: 'payroll_self_employed_tax',
+                        amount: amt,
+                        description: desc,
+                        component_type: 'payroll_self_employed_tax',
+                    },
+                    y,
+                    m,
+                    'self_employed_tax',
+                );
             } else if (action === 'insurance_contributions') {
                 const amt = amounts.insurance_company_cost;
                 if (amt <= 0) {
@@ -1628,12 +1657,21 @@ router.post(
                     advance_gross_paid: amounts.advance_brutto,
                     ndfl_from_advance: amounts.ndfl_on_advance,
                     ndfl_from_remainder: st.ndfl_from_remainder,
+                    self_employed_tax_paid: st.self_employed_tax_paid,
                 });
             } else if (action === 'remainder') {
                 await upsertPayrollMonthlyState(companyId, userId, y, m, {
                     advance_gross_paid: st.advance_gross_paid,
                     ndfl_from_advance: st.ndfl_from_advance,
                     ndfl_from_remainder: amounts.ndfl_on_remainder,
+                    self_employed_tax_paid: st.self_employed_tax_paid,
+                });
+            } else if (action === 'self_employed_tax') {
+                await upsertPayrollMonthlyState(companyId, userId, y, m, {
+                    advance_gross_paid: st.advance_gross_paid,
+                    ndfl_from_advance: st.ndfl_from_advance,
+                    ndfl_from_remainder: st.ndfl_from_remainder,
+                    self_employed_tax_paid: amounts.self_employed_tax_amount,
                 });
             }
 
@@ -2080,4 +2118,169 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
     }
 });
 
+router.get('/daily-finance', authenticateToken, requirePermission('can_view_finances'), async (req: Request, res: Response): Promise<void> => {
+    try {
+        const companyId = (req.user as any)?.company_id as string | undefined;
+        if (!companyId) {
+            res.status(400).json({ error: { message: 'company_context_required' } });
+            return;
+        }
+        const weekStart = String(req.query.week_start || '');
+        const weekEnd = String(req.query.week_end || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart) || !/^\d{4}-\d{2}-\d{2}$/.test(weekEnd)) {
+            res.status(400).json({ error: { message: 'week_start и week_end обязательны (YYYY-MM-DD)' } });
+            return;
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        // 1. Transactions income/expense by created_at date
+        const txRes = await query(
+            `SELECT
+                DATE(created_at)::text AS dt,
+                type,
+                COALESCE(SUM(amount), 0)::real AS total
+            FROM transactions
+            WHERE company_id = $1 AND DATE(created_at) BETWEEN $2 AND $3
+            GROUP BY DATE(created_at), type`,
+            [companyId, weekStart, weekEnd],
+        );
+
+        // 2. Deal table rows — fact commissions + expenses by payment_date
+        const dealFactRes = await query(
+            `SELECT
+                payment_date AS dt,
+                COALESCE(SUM(commission_seller_fact + commission_buyer_fact), 0)::real AS income,
+                COALESCE(SUM(other_expenses + mortgage_deduction), 0)::real AS expense
+            FROM deal_table_rows
+            WHERE company_id = $1 AND payment_date BETWEEN $2 AND $3
+            GROUP BY payment_date`,
+            [companyId, weekStart, weekEnd],
+        );
+
+        // 3. Deal table rows — plan commissions + expenses by payment_date (for future days)
+        const dealPlanRes = await query(
+            `SELECT
+                payment_date AS dt,
+                COALESCE(SUM(commission_seller_plan + commission_buyer_plan), 0)::real AS income,
+                COALESCE(SUM(other_expenses + mortgage_deduction), 0)::real AS expense
+            FROM deal_table_rows
+            WHERE company_id = $1 AND payment_date BETWEEN $2 AND $3
+            GROUP BY payment_date`,
+            [companyId, weekStart, weekEnd],
+        );
+
+        // 4. Recurring expenses by day of month
+        const recurringRes = await query(
+            `SELECT amount::real, payment_days
+            FROM recurring_expenses
+            WHERE company_id = $1 AND is_active = 1`,
+            [companyId],
+        );
+
+        // Build daily map
+        const result: Array<{
+            date: string;
+            income: number;
+            expense: number;
+            balance: number;
+            is_projected: boolean;
+        }> = [];
+
+        // Helper to add days
+        const addDay = (base: string, days: number) => {
+            const d = new Date(base + 'T00:00:00');
+            d.setUTCDate(d.getUTCDate() + days);
+            return d.toISOString().slice(0, 10);
+        };
+
+        // Pre-index results
+        const txMap = new Map<string, { income: number; expense: number }>();
+        for (const row of txRes.rows) {
+            const dt = row.dt;
+            if (!txMap.has(dt)) txMap.set(dt, { income: 0, expense: 0 });
+            const cur = txMap.get(dt)!;
+            const amt = parseFloat(row.total) || 0;
+            if (row.type === 'income') cur.income += amt;
+            else if (row.type === 'expense') cur.expense += amt;
+        }
+
+        const dealFactMap = new Map<string, { income: number; expense: number }>();
+        for (const row of dealFactRes.rows) {
+            dealFactMap.set(row.dt, {
+                income: parseFloat(row.income) || 0,
+                expense: parseFloat(row.expense) || 0,
+            });
+        }
+
+        const dealPlanMap = new Map<string, { income: number; expense: number }>();
+        for (const row of dealPlanRes.rows) {
+            dealPlanMap.set(row.dt, {
+                income: parseFloat(row.income) || 0,
+                expense: parseFloat(row.expense) || 0,
+            });
+        }
+
+        for (let i = 0; i < 7; i++) {
+            const date = addDay(weekStart, i);
+            const isProjected = date > todayStr;
+
+            if (isProjected) {
+                let income = 0;
+                let expense = 0;
+                const plan = dealPlanMap.get(date);
+                if (plan) {
+                    income += plan.income;
+                    expense += plan.expense;
+                }
+                // Recurring expenses
+                const dayOfMonth = parseInt(date.slice(8, 10), 10);
+                for (const row of recurringRes.rows) {
+                    try {
+                        const days: number[] = JSON.parse(row.payment_days || '[]');
+                        if (days.includes(dayOfMonth)) {
+                            expense += parseFloat(row.amount) || 0;
+                        }
+                    } catch {
+                        // ignore bad json
+                    }
+                }
+                result.push({
+                    date,
+                    income: Math.round(income),
+                    expense: Math.round(expense),
+                    balance: Math.round(income - expense),
+                    is_projected: true,
+                });
+            } else {
+                let income = 0;
+                let expense = 0;
+                const tx = txMap.get(date);
+                if (tx) {
+                    income += tx.income;
+                    expense += tx.expense;
+                }
+                const fact = dealFactMap.get(date);
+                if (fact) {
+                    income += fact.income;
+                    expense += fact.expense;
+                }
+                result.push({
+                    date,
+                    income: Math.round(income),
+                    expense: Math.round(expense),
+                    balance: Math.round(income - expense),
+                    is_projected: false,
+                });
+            }
+        }
+
+        res.json({ days: result });
+    } catch (error) {
+        console.error('dashboard-daily-finance', error);
+        res.status(500).json({ error: { message: 'Server error' } });
+    }
+});
+
 export default router;
+// TEST MARKER

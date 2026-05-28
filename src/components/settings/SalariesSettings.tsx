@@ -13,6 +13,7 @@ const pctFields = [
   ['ndfl_percent', '% НДФЛ (удержание)', 'например 13'],
   ['advance_percent', '% аванса от оклада (брутто)', 'доля месячного оклада'],
   ['insurance_percent', '% страховых взносов (от оклада)', 'расход компании'],
+  ['self_employed_tax_percent', '% налога самозанятого', 'например 6'],
 ] as const;
 
 /** Поля запроса (ключи только в теле PATCH); подписи в интерфейсе — по-русски. */
@@ -31,6 +32,7 @@ export function SalariesSettings() {
     ndfl_percent: 13,
     advance_percent: 40,
     insurance_percent: 30,
+    self_employed_tax_percent: 6,
     base_salary_sales_manager: 0,
     base_salary_head_sales: 0,
     base_salary_commercial: 0,
@@ -60,6 +62,7 @@ export function SalariesSettings() {
             ndfl_percent: num(d.ndfl_percent) ?? prev.ndfl_percent,
             advance_percent: num(d.advance_percent) ?? prev.advance_percent,
             insurance_percent: num(d.insurance_percent) ?? prev.insurance_percent,
+            self_employed_tax_percent: num(d.self_employed_tax_percent) ?? prev.self_employed_tax_percent,
             base_salary_sales_manager:
               num(d.base_salary_sales_manager) ??
               (cat?.base_salary_sales_manager != null ? cat.base_salary_sales_manager : prev.base_salary_sales_manager),
@@ -88,6 +91,7 @@ export function SalariesSettings() {
           ndfl_percent: form.ndfl_percent,
           advance_percent: form.advance_percent,
           insurance_percent: form.insurance_percent,
+          self_employed_tax_percent: form.self_employed_tax_percent,
           base_salary_sales_manager: form.base_salary_sales_manager,
           base_salary_head_sales: form.base_salary_head_sales,
           base_salary_commercial: form.base_salary_commercial,

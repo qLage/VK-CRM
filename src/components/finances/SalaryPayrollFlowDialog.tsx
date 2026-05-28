@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { localAPI } from '@/integrations/localAPI';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
 type PayrollPaid = {
@@ -21,6 +23,7 @@ type PayrollPaid = {
   ndfl_budget_1?: boolean;
   ndfl_budget_2?: boolean;
   insurance_contributions?: boolean;
+  self_employed_tax?: boolean;
 };
 
 type PayrollAmounts = {
@@ -31,6 +34,7 @@ type PayrollAmounts = {
   remainder_brutto: number;
   ndfl_on_remainder: number;
   net_remainder_to_employee: number;
+  self_employed_tax_amount: number;
   ndfl_budget_1_from_advance: number;
   ndfl_budget_2_from_remainder: number;
   insurance_company_cost: number;
@@ -41,17 +45,29 @@ const ACTIONS = [
   { key: 'advance', title: 'Аванс' },
   { key: 'ndfl_budget_1', title: 'НДФЛ 1' },
   { key: 'remainder', title: 'Остаток зарплаты' },
+  { key: 'self_employed_tax', title: 'Налог самозанятого' },
   { key: 'ndfl_budget_2', title: 'НДФЛ 2' },
   { key: 'insurance_contributions', title: 'Страховые взносы' },
 ] as const;
 
 type ActionKey = (typeof ACTIONS)[number]['key'];
 
+type PayrollOrg = {
+  ndfl_percent: number;
+  advance_percent: number;
+  insurance_percent: number;
+  self_employed_tax_percent: number;
+  base_salary_sales_manager: number;
+  base_salary_head_sales: number;
+  base_salary_commercial: number;
+};
+
 type PayrollPreview = {
   period_label?: string;
   payroll_year: number;
   payroll_month: number;
   oklad_effective?: number;
+  payroll_org?: PayrollOrg;
   amounts: PayrollAmounts;
   paid: PayrollPaid;
   step_done?: PayrollPaid;
@@ -71,6 +87,8 @@ function debitRub(key: ActionKey, amt: PayrollAmounts): number {
       return amt.net_advance_to_employee;
     case 'remainder':
       return amt.net_remainder_to_employee;
+    case 'self_employed_tax':
+      return amt.self_employed_tax_amount;
     case 'ndfl_budget_1':
       return amt.ndfl_budget_1_from_advance;
     case 'ndfl_budget_2':
@@ -88,6 +106,8 @@ function breakdownLine(key: ActionKey, amt: PayrollAmounts): string {
       return `На руки ${fmtRub(amt.net_advance_to_employee)} · брутто ${fmtRub(amt.advance_brutto)} · НДФЛ ${fmtRub(amt.ndfl_on_advance)}`;
     case 'remainder':
       return `На руки ${fmtRub(amt.net_remainder_to_employee)} · брутто ${fmtRub(amt.remainder_brutto)} · НДФЛ ${fmtRub(amt.ndfl_on_remainder)}`;
+    case 'self_employed_tax':
+      return `Удержание с остатка зарплаты (${fmtRub(amt.self_employed_tax_amount)})`;
     case 'ndfl_budget_1':
       return `НДФЛ, удержанный с аванса (${fmtRub(amt.ndfl_budget_1_from_advance)})`;
     case 'ndfl_budget_2':
@@ -129,14 +149,15 @@ export function SalaryPayrollFlowDialog({
 }: SalaryPayrollFlowDialogProps) {
   const [open, setOpen] = React.useState(false);
   const [accountType, setAccountType] = React.useState<'cash' | 'account'>('cash');
+  const [applySelfEmployedTax, setApplySelfEmployedTax] = React.useState(true);
   const queryClient = useQueryClient();
 
   const { data: preview, isLoading, isError, refetch } = useQuery({
-    queryKey: ['payroll-preview', userId, payrollYear, payrollMonth],
+    queryKey: ['payroll-preview', userId, payrollYear, payrollMonth, applySelfEmployedTax],
     enabled: open,
     queryFn: async (): Promise<PayrollPreview | null> => {
       const { data, error } = await localAPI.request(
-        `/finances/payroll-preview?user_id=${encodeURIComponent(userId)}&year=${payrollYear}&month=${payrollMonth}`,
+        `/finances/payroll-preview?user_id=${encodeURIComponent(userId)}&year=${payrollYear}&month=${payrollMonth}&apply_self_employed_tax=${applySelfEmployedTax}`,
       );
       if (error) throw error;
       return data as PayrollPreview;
@@ -156,6 +177,7 @@ export function SalaryPayrollFlowDialog({
           payroll_month: payrollMonth,
           account_type: accountType,
           action,
+          apply_self_employed_tax: applySelfEmployedTax,
         },
       });
       if (error) throw error as Error;
@@ -191,7 +213,8 @@ export function SalaryPayrollFlowDialog({
     !!pk.remainder &&
     !!pk.ndfl_budget_1 &&
     !!pk.ndfl_budget_2 &&
-    !!pk.insurance_contributions;
+    !!pk.insurance_contributions &&
+    !!pk.self_employed_tax;
 
   function resolveRow(key: ActionKey): { disabled: boolean; reason: string | null } {
     if (mutation.isPending) return { disabled: true, reason: null };
@@ -214,6 +237,7 @@ export function SalaryPayrollFlowDialog({
       if (key === 'remainder') return { disabled: true, reason: 'Остаток «на руки» не положителен — возможно, не хватает данных по авансу.' };
       if (key === 'ndfl_budget_1') return { disabled: true, reason: 'НДФЛ с аванса не положителен — проверьте оклад и ставку НДФЛ.' };
       if (key === 'ndfl_budget_2') return { disabled: true, reason: 'НДФЛ с остатка не положителен.' };
+      if (key === 'self_employed_tax') return { disabled: true, reason: 'Налог самозанятого не положителен — проверьте % в Настройки → Зарплаты.' };
       if (key === 'insurance_contributions') return { disabled: true, reason: 'Проверьте % страховых взносов в Настройки → Зарплаты.' };
     }
 
@@ -240,7 +264,7 @@ export function SalaryPayrollFlowDialog({
               </span>
             )}
             <p className="text-xs text-amber-200/85 leading-snug rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 mt-2">
-              Один расчётный месяц: аванс (на руки) → бюджетный НДФЛ 1 (удержано с выплаченного аванса) → остаток на руки → НДФЛ 2 (с остатка) → страховые взносы.
+              Один расчётный месяц: аванс (на руки) → бюджетный НДФЛ 1 (удержано с выплаченного аванса) → остаток на руки → налог самозанятого → НДФЛ 2 (с остатка) → страховые взносы.
               Дальнейшие шаги недоступны, пока не проведены предыдущие.
             </p>
             {allPaid && (
@@ -261,6 +285,17 @@ export function SalaryPayrollFlowDialog({
             </TabsList>
           </Tabs>
 
+          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <Checkbox
+              id="apply-self-employed-tax"
+              checked={applySelfEmployedTax}
+              onCheckedChange={(v) => setApplySelfEmployedTax(v === true)}
+            />
+            <Label htmlFor="apply-self-employed-tax" className="text-sm text-white/80 font-medium cursor-pointer">
+              Удержать налог самозанятого ({preview?.payroll_org?.self_employed_tax_percent ?? 6}%)
+            </Label>
+          </div>
+
           <p className="text-sm text-white/55 leading-snug">
             Суммы ниже — списание с выбранного счёта по проводке (как в финансовом учёте). Личный доход сотрудника по авансу и остатку —
             суммы «на руки».
@@ -278,6 +313,7 @@ export function SalaryPayrollFlowDialog({
           <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
             {isLoading ? (
               <>
+                <PayrollActionSkeleton />
                 <PayrollActionSkeleton />
                 <PayrollActionSkeleton />
                 <PayrollActionSkeleton />

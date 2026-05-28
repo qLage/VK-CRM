@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, Calendar, CheckCircle, XCircle, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAttendanceData } from '@/hooks/useSharedData';
@@ -8,6 +9,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { format, subDays, addDays, startOfWeek, isSameDay, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
+import { localAPI } from '@/integrations/localAPI';
 
 import { Clock } from 'lucide-react';
 
@@ -62,6 +69,18 @@ const FIXED_SCHEDULE: Record<number, { time: string; title: string }[]> = {
   0: []
 };
 
+type DailyFinance = {
+  date: string;
+  income: number;
+  expense: number;
+  balance: number;
+  is_projected: boolean;
+};
+
+function fmtRub(n: number) {
+  return `${Math.round(n).toLocaleString('ru-RU')} ₽`;
+}
+
 export function WeekCalendar() {
   const { user } = useAuth();
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -85,6 +104,29 @@ export function WeekCalendar() {
       a.user_id === user.id && a.date >= weekStartStr && a.date <= weekEndStr
     ) as AttendanceRecord[];
   }, [allAttendance, user?.id, currentWeekStart]);
+
+  const weekEnd = addDays(currentWeekStart, 6);
+  const weekStartStr = format(currentWeekStart, 'yyyy-MM-dd');
+  const weekEndStr = format(weekEnd, 'yyyy-MM-dd');
+
+  const { data: dailyFinance } = useQuery({
+    queryKey: ['daily-finance', weekStartStr, weekEndStr],
+    queryFn: async (): Promise<DailyFinance[]> => {
+      const { data, error } = await localAPI.request(
+        `/finances/daily-finance?week_start=${weekStartStr}&week_end=${weekEndStr}`,
+      );
+      if (error) throw error;
+      return (data as { days: DailyFinance[] })?.days || [];
+    },
+  });
+
+  const financeMap = useMemo(() => {
+    const map = new Map<string, DailyFinance>();
+    for (const d of dailyFinance || []) {
+      map.set(d.date, d);
+    }
+    return map;
+  }, [dailyFinance]);
 
   const getWeekDays = () => {
     const days = [];
@@ -176,37 +218,90 @@ export function WeekCalendar() {
       <div className="p-3 md:p-4">
         {/* Week days */}
         <div className="flex gap-1.5 md:gap-2 overflow-x-auto pb-2 md:pb-3 -mx-1 px-1 scrollbar-hide">
-          {weekDays.map((day, index) => (
-            <motion.div
-              key={day.dateStr}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-              onClick={() => setSelectedDay(index)}
-              className={cn(
-                'flex flex-col items-center py-2 px-2.5 md:py-2.5 md:px-3.5 rounded-lg md:rounded-xl cursor-pointer transition-all min-w-[44px] md:min-w-[48px] touch-target relative',
-                activeDayIndex === index
-                  ? 'bg-primary text-primary-foreground shadow-accent'
-                  : isToday(day.date)
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-secondary hover:bg-secondary/80'
-              )}
-            >
-              <span className={cn(
-                'text-[9px] md:text-[10px] font-medium',
-                activeDayIndex === index ? 'text-primary-foreground/80' : 'text-muted-foreground'
-              )}>
-                {dayNames[index]}
-              </span>
-              <span className="text-sm md:text-base font-bold mt-0.5">{format(day.date, 'd')}</span>
-              {day.hasAttendance && (
-                <span className={cn(
-                  'w-1 h-1 md:w-1.5 md:h-1.5 rounded-full mt-1',
-                  activeDayIndex === index ? 'bg-primary-foreground' : 'bg-success'
-                )} />
-              )}
-            </motion.div>
-          ))}
+          {weekDays.map((day, index) => {
+            const fin = financeMap.get(day.dateStr);
+            const isFuture = fin?.is_projected ?? false;
+            return (
+              <HoverCard key={day.dateStr} openDelay={200} closeDelay={100}>
+                <HoverCardTrigger asChild>
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    onClick={() => setSelectedDay(index)}
+                    className={cn(
+                      'flex flex-col items-center py-2 px-2.5 md:py-2.5 md:px-3.5 rounded-lg md:rounded-xl cursor-pointer transition-all min-w-[44px] md:min-w-[48px] touch-target relative',
+                      activeDayIndex === index
+                        ? 'bg-primary text-primary-foreground shadow-accent'
+                        : isToday(day.date)
+                          ? 'bg-primary/20 text-primary'
+                          : 'bg-secondary hover:bg-secondary/80'
+                    )}
+                  >
+                    <span className={cn(
+                      'text-[9px] md:text-[10px] font-medium',
+                      activeDayIndex === index ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                    )}>
+                      {dayNames[index]}
+                    </span>
+                    <span className="text-sm md:text-base font-bold mt-0.5">{format(day.date, 'd')}</span>
+                    {day.hasAttendance && (
+                      <span className={cn(
+                        'w-1 h-1 md:w-1.5 md:h-1.5 rounded-full mt-1',
+                        activeDayIndex === index ? 'bg-primary-foreground' : 'bg-success'
+                      )} />
+                    )}
+                  </motion.div>
+                </HoverCardTrigger>
+                {fin && (
+                  <HoverCardContent
+                    side="top"
+                    align="center"
+                    className="w-56 p-3 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-sm"
+                  >
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        {isFuture ? 'План финансов' : 'Финансы'}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                          <span className="text-xs text-white/70">
+                            {isFuture ? 'План дохода' : 'Доход'}
+                          </span>
+                        </div>
+                        <span className="text-xs font-bold tabular-nums text-emerald-400">{fmtRub(fin.income)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <TrendingDown className="h-3.5 w-3.5 text-rose-400" />
+                          <span className="text-xs text-white/70">
+                            {isFuture ? 'План расхода' : 'Расход'}
+                          </span>
+                        </div>
+                        <span className="text-xs font-bold tabular-nums text-rose-400">{fmtRub(fin.expense)}</span>
+                      </div>
+                      <div className="h-px bg-white/10" />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Wallet className="h-3.5 w-3.5 text-amber-400" />
+                          <span className="text-xs text-white/70">
+                            {isFuture ? 'План баланс' : 'Баланс'}
+                          </span>
+                        </div>
+                        <span className={cn(
+                          'text-xs font-bold tabular-nums',
+                          fin.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        )}>
+                          {fmtRub(fin.balance)}
+                        </span>
+                      </div>
+                    </div>
+                  </HoverCardContent>
+                )}
+              </HoverCard>
+            );
+          })}
         </div>
 
         {/* Selected day info */}
