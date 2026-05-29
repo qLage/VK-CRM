@@ -915,6 +915,7 @@ router.post('/',
   [
     body('month').isInt({ min: 1, max: 12 }).withMessage('Month must be 1-12'),
     body('year').isInt({ min: 2020, max: 2100 }).withMessage('Invalid year'),
+    body('deal_date').notEmpty().withMessage('Укажите дату сделки'),
     // property_name and document_type have fallbacks in DealTableRow.create() — no longer required.
     body('property_name').optional({ nullable: true, checkFalsy: false }),
     body('document_type').optional({ nullable: true, checkFalsy: false })
@@ -1011,6 +1012,7 @@ router.put('/:id',
         return Number.isFinite(n) && n >= 2000 && n <= 2100;
       })
       .withMessage('year must be 2000–2100'),
+    body('deal_date').optional({ values: 'falsy' }).isISO8601().withMessage('Неверный формат даты сделки'),
     body('property_name').optional({ values: 'falsy' }).isString().trim(),
     body('document_type').optional({ values: 'falsy' }).isString().trim(),
   ],

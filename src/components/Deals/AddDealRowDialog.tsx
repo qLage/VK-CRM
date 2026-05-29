@@ -606,6 +606,7 @@ const AddDealRowDialog = memo(function AddDealRowDialog({ open, onOpenChange, ed
         seller: editingDeal.seller || '',
         buyer: editingDeal.buyer || '',
         agent_name: editingDeal.agent_name || '',
+        agent_id: editingDeal.agent_id || '',
         rop_name: editingDeal.rop_name ?? '',
         rop_id: editingDeal.rop_id ?? '',
         rop_percent: coerceNumericField(editingDeal.rop_percent ?? 0),

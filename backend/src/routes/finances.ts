@@ -69,6 +69,23 @@ function parseRowBool(v: unknown): boolean {
     return Boolean(v);
 }
 
+/** Build [start, end) ISO date strings for a given year/month to filter deal_date / payment_date columns (TEXT/TIMESTAMP). */
+function periodBounds(year: number, month: number): { start: string; end: string } {
+    const start = `${year}-${String(month).padStart(2, '0')}-01`;
+    const end = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    return { start, end };
+}
+
+/** Build [start, end) for a contiguous range of months (e.g. quarter). */
+function multiMonthBounds(year: number, months: number[]): { start: string; end: string } {
+    const minMonth = Math.min(...months);
+    const maxMonth = Math.max(...months);
+    const start = `${year}-${String(minMonth).padStart(2, '0')}-01`;
+    const endMonth = maxMonth + 1;
+    const end = endMonth > 12 ? `${year + 1}-01-01` : `${year}-${String(endMonth).padStart(2, '0')}-01`;
+    return { start, end };
+}
+
 async function resolveUsesOfficialPayroll(profileId: string): Promise<boolean> {
     try {
         const r = await query(`SELECT uses_official_payroll AS u FROM profiles WHERE id = $1`, [profileId]);
@@ -803,6 +820,8 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
 
         const salaries: any[] = [];
 
+        const { start: pStart, end: pEnd } = periodBounds(periodYear, periodMonth);
+
         for (const emp of Array.from(empRowsByProfile.values()).map((rows) => pickPreferredPayrollRoleRow(rows)) as any[]) {
             // 1. Personal income (from deals where this person is the agent)
             const personalRes = await query(`
@@ -810,9 +829,10 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                     COALESCE(SUM(agent_income), 0) as income,
                     COALESCE(SUM(commission_total_fact), 0) as revenue
                 FROM deal_table_rows
-                WHERE (agent_id = $1 OR agent_name = $2) AND year = $3 AND month = $4
+                WHERE (agent_id = $1 OR agent_name = $2)
+                  AND deal_date >= $3 AND deal_date < $4
                   AND status IN ('approved', 'active')
-            `, [emp.id, emp.full_name, periodYear, periodMonth]);
+            `, [emp.id, emp.full_name, pStart, pEnd]);
 
             const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
             const personalRevenueRaw = parseFloat(personalRes.rows[0]?.revenue) || 0;
@@ -822,24 +842,26 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
             const mopBonusRes = await query(`
                 SELECT COALESCE(SUM(mop_revenue), 0) as total
                 FROM deal_table_rows
-                WHERE (mop_id = $1 OR mop_name = $2) AND year = $3 AND month = $4
+                WHERE (mop_id = $1 OR mop_name = $2)
+                  AND deal_date >= $3 AND deal_date < $4
                   AND status IN ('approved', 'active')
                   AND payment_date IS NOT NULL
                   AND payment_date <> ''
                   AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
-            `, [emp.id, emp.full_name, periodYear, periodMonth]);
+            `, [emp.id, emp.full_name, pStart, pEnd]);
             const teamBonus = Math.round(parseFloat(mopBonusRes.rows[0]?.total) || 0);
 
             // ROP revenue is in rop_payout column
             const ropBonusRes = await query(`
                 SELECT COALESCE(SUM(rop_payout), 0) as total
                 FROM deal_table_rows
-                WHERE (rop_id = $1 OR rop_name = $2) AND year = $3 AND month = $4
+                WHERE (rop_id = $1 OR rop_name = $2)
+                  AND deal_date >= $3 AND deal_date < $4
                   AND status IN ('approved', 'active')
                   AND payment_date IS NOT NULL
                   AND payment_date <> ''
                   AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
-            `, [emp.id, emp.full_name, periodYear, periodMonth]);
+            `, [emp.id, emp.full_name, pStart, pEnd]);
             const departmentBonus = Math.round(parseFloat(ropBonusRes.rows[0]?.total) || 0);
 
             let mortgageAgentIncome = 0;
@@ -849,23 +871,23 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                     `SELECT COALESCE(SUM(agent_fee), 0) as total
                      FROM mortgage_service_rows
                      WHERE company_id = $5
-                       AND year = $3 AND month = $4 AND status = 'approved'
+                       AND deal_date >= $3 AND deal_date < $4 AND status = 'approved'
                        AND (
                          agent_id = $1
                          OR (COALESCE(TRIM(agent_name), '') <> '' AND LOWER(TRIM(agent_name)) = LOWER(TRIM($2)))
                        )`,
-                    [emp.id, emp.full_name || '', periodYear, periodMonth, companyId]
+                    [emp.id, emp.full_name || '', pStart, pEnd, companyId]
                 );
                 const mortgageBrokerRes = await query(
                     `SELECT COALESCE(SUM(broker_share), 0) as total
                      FROM mortgage_service_rows
                      WHERE company_id = $5
-                       AND year = $3 AND month = $4 AND status = 'approved'
+                       AND deal_date >= $3 AND deal_date < $4 AND status = 'approved'
                        AND (
                          broker_id = $1
                          OR (COALESCE(TRIM(broker_name), '') <> '' AND LOWER(TRIM(broker_name)) = LOWER(TRIM($2)))
                        )`,
-                    [emp.id, emp.full_name || '', periodYear, periodMonth, companyId]
+                    [emp.id, emp.full_name || '', pStart, pEnd, companyId]
                 );
                 mortgageAgentIncome = Math.round(parseFloat(mortgageAgentRes.rows[0]?.total) || 0);
                 mortgageBrokerIncome = Math.round(parseFloat(mortgageBrokerRes.rows[0]?.total) || 0);
@@ -969,6 +991,7 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
         const userId = req.user!.id;
         const companyId = (req.user as any)?.company_id as string | undefined;
         const payrollOrg = companyId ? await getPayrollOrgSettings(companyId) : DEFAULT_PAYROLL_ORG_SETTINGS;
+        const { start: meStart, end: meEnd } = multiMonthBounds(periodYear, periodMonths);
 
         // Personal income (from paid transactions to this employee)
         const personalRes = await query(`
@@ -989,23 +1012,25 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
         const mopBonusRes = await query(`
             SELECT COALESCE(SUM(mop_revenue), 0) as total
             FROM deal_table_rows
-            WHERE (mop_id = $1) AND year = $2 AND month = ANY($3)
+            WHERE (mop_id = $1)
+              AND deal_date >= $2 AND deal_date < $3
               AND status IN ('approved', 'active')
               AND payment_date IS NOT NULL
               AND payment_date <> ''
               AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
-        `, [userId, periodYear, periodMonths]);
+        `, [userId, meStart, meEnd]);
         const teamBonus = Math.round(parseFloat(mopBonusRes.rows[0]?.total) || 0);
 
         const ropBonusRes = await query(`
             SELECT COALESCE(SUM(rop_payout), 0) as total
             FROM deal_table_rows
-            WHERE (rop_id = $1) AND year = $2 AND month = ANY($3)
+            WHERE (rop_id = $1)
+              AND deal_date >= $2 AND deal_date < $3
               AND status IN ('approved', 'active')
               AND payment_date IS NOT NULL
               AND payment_date <> ''
               AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
-        `, [userId, periodYear, periodMonths]);
+        `, [userId, meStart, meEnd]);
         const departmentBonus = Math.round(parseFloat(ropBonusRes.rows[0]?.total) || 0);
 
         // Base Salary - multiply by number of months for quarter view
@@ -1038,21 +1063,21 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
                 `SELECT COALESCE(SUM(agent_fee), 0) as total
                  FROM mortgage_service_rows
                  WHERE company_id = $4
-                   AND year = $2 AND month = ANY($3) AND status = 'approved'
+                   AND deal_date >= $2 AND deal_date < $3 AND status = 'approved'
                    AND (
                      agent_id = $1 OR (COALESCE(TRIM(agent_name), '') <> '' AND LOWER(TRIM(agent_name)) = LOWER(TRIM($5)))
                    )`,
-                [userId, periodYear, periodMonths, companyId, employeeFullName]
+                [userId, meStart, meEnd, companyId, employeeFullName]
             );
             const mortgageBrokerRes = await query(
                 `SELECT COALESCE(SUM(broker_share), 0) as total
                  FROM mortgage_service_rows
                  WHERE company_id = $4
-                   AND year = $2 AND month = ANY($3) AND status = 'approved'
+                   AND deal_date >= $2 AND deal_date < $3 AND status = 'approved'
                    AND (
                      broker_id = $1 OR (COALESCE(TRIM(broker_name), '') <> '' AND LOWER(TRIM(broker_name)) = LOWER(TRIM($5)))
                    )`,
-                [userId, periodYear, periodMonths, companyId, employeeFullName]
+                [userId, meStart, meEnd, companyId, employeeFullName]
             );
             mortgageAgentIncome = Math.round(parseFloat(mortgageAgentRes.rows[0]?.total) || 0);
             mortgageBrokerIncome = Math.round(parseFloat(mortgageBrokerRes.rows[0]?.total) || 0);
@@ -1731,8 +1756,9 @@ router.post('/recalculate', authenticateToken, requirePermission('can_manage_fin
             periods.push({ year: parseInt(year), month: parseInt(month) });
         } else if (all) {
             const rows = await query(`
-                SELECT DISTINCT year, month
+                SELECT DISTINCT EXTRACT(YEAR FROM deal_date::date)::int as year, EXTRACT(MONTH FROM deal_date::date)::int as month
                 FROM deal_table_rows
+                WHERE deal_date IS NOT NULL AND deal_date <> ''
                 ORDER BY year DESC, month DESC
             `);
             for (const r of rows.rows) {
@@ -1750,36 +1776,37 @@ router.post('/recalculate', authenticateToken, requirePermission('can_manage_fin
         for (const p of periods) {
             try {
                 await query(`
-                    UPDATE deal_table_rows dtr
-                    SET
-                        commission_seller_fact = COALESCE(NULLIF(dc.commission_seller_fact, 0), dtr.commission_seller_fact),
-                        commission_buyer_fact = COALESCE(NULLIF(dc.commission_buyer_fact, 0), dtr.commission_buyer_fact),
-                        agent_percent_seller = CASE
-                            WHEN COALESCE(dtr.agent_percent_seller, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_seller, 0), 50)
-                            ELSE dtr.agent_percent_seller
-                        END,
-                        agent_percent_buyer = CASE
-                            WHEN COALESCE(dtr.agent_percent_buyer, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_buyer, 0), 50)
-                            ELSE dtr.agent_percent_buyer
-                        END,
-                        updated_at = $3
-                    FROM deals d
-                    JOIN deal_commissions dc ON dc.deal_id = d.id
-                    LEFT JOIN deal_participants dp ON dp.deal_id = d.id AND dp.role IN ('realtor', 'agent')
-                    LEFT JOIN profiles p ON p.id = dp.employee_id
-                    WHERE dtr.year = $1
-                      AND dtr.month = $2
-                      AND d.period_year = dtr.year
-                      AND d.period_month = dtr.month
-                      AND LOWER(TRIM(d.property_object)) = LOWER(TRIM(dtr.property_name))
-                      AND (
-                        p.full_name IS NULL
-                        OR LOWER(TRIM(p.full_name)) = LOWER(TRIM(dtr.agent_name))
-                      )
-                      AND COALESCE(dtr.commission_seller_fact, 0) = 0
-                      AND COALESCE(dtr.commission_buyer_fact, 0) = 0
-                      AND COALESCE(dtr.commission_total_fact, 0) = 0
-                `, [p.year, p.month, new Date().toISOString()]);
+                    const { start: rStart, end: rEnd } = periodBounds(p.year, p.month);
+                    await query(`
+                        UPDATE deal_table_rows dtr
+                        SET
+                            commission_seller_fact = COALESCE(NULLIF(dc.commission_seller_fact, 0), dtr.commission_seller_fact),
+                            commission_buyer_fact = COALESCE(NULLIF(dc.commission_buyer_fact, 0), dtr.commission_buyer_fact),
+                            agent_percent_seller = CASE
+                                WHEN COALESCE(dtr.agent_percent_seller, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_seller, 0), 50)
+                                ELSE dtr.agent_percent_seller
+                            END,
+                            agent_percent_buyer = CASE
+                                WHEN COALESCE(dtr.agent_percent_buyer, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_buyer, 0), 50)
+                                ELSE dtr.agent_percent_buyer
+                            END,
+                            updated_at = $3
+                        FROM deals d
+                        JOIN deal_commissions dc ON dc.deal_id = d.id
+                        LEFT JOIN deal_participants dp ON dp.deal_id = d.id AND dp.role IN ('realtor', 'agent')
+                        LEFT JOIN profiles p ON p.id = dp.employee_id
+                        WHERE dtr.deal_date >= $1 AND dtr.deal_date < $2
+                          AND d.period_year = ${p.year}
+                          AND d.period_month = ${p.month}
+                          AND LOWER(TRIM(d.property_object)) = LOWER(TRIM(dtr.property_name))
+                          AND (
+                            p.full_name IS NULL
+                            OR LOWER(TRIM(p.full_name)) = LOWER(TRIM(dtr.agent_name))
+                          )
+                          AND COALESCE(dtr.commission_seller_fact, 0) = 0
+                          AND COALESCE(dtr.commission_buyer_fact, 0) = 0
+                          AND COALESCE(dtr.commission_total_fact, 0) = 0
+                    `, [rStart, rEnd, new Date().toISOString()]);
             } catch (e) {
                 // Optional backfill
             }
@@ -1795,8 +1822,8 @@ router.post('/recalculate', authenticateToken, requirePermission('can_manage_fin
                        mop_percent,
                        rop_percent
                 FROM deal_table_rows
-                WHERE year = $1 AND month = $2
-            `, [p.year, p.month]);
+                WHERE deal_date >= $1 AND deal_date < $2
+            `, [rStart, rEnd]);
 
             let periodUpdated = 0;
 
@@ -1986,6 +2013,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
         const periodYear = year ? parseInt(year as string) : new Date().getFullYear();
         const periodMonth = month ? parseInt(month as string) : (new Date().getMonth() + 1);
         const roleFilter = role ? String(role) : 'agent';
+        const { start: dStart, end: dEnd } = periodBounds(periodYear, periodMonth);
 
         const profileNameRes = await query(`SELECT full_name FROM profiles WHERE id = $1`, [userId]);
         const profileName = profileNameRes.rows[0]?.full_name || '';
@@ -2009,11 +2037,11 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                     subcontractor_amount
                 FROM deal_table_rows
                 WHERE (mop_id = $1 OR mop_name = $2)
-                  AND year = $3 AND month = $4
+                  AND deal_date >= $3 AND deal_date < $4
                   AND status IN ('approved', 'active')
                   AND company_id = $5
                 ORDER BY payment_date DESC NULLS LAST
-            `, [userId, profileName, periodYear, periodMonth, companyId]);
+            `, [userId, profileName, dStart, dEnd, companyId]);
             res.json({ data: mopDealsRes.rows.map((r: any) => ({
                 ...r,
                 role_label: 'МОП',
@@ -2041,11 +2069,11 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                     subcontractor_amount
                 FROM deal_table_rows
                 WHERE (rop_id = $1 OR rop_name = $2)
-                  AND year = $3 AND month = $4
+                  AND deal_date >= $3 AND deal_date < $4
                   AND status IN ('approved', 'active')
                   AND company_id = $5
                 ORDER BY payment_date DESC NULLS LAST
-            `, [userId, profileName, periodYear, periodMonth, companyId]);
+            `, [userId, profileName, dStart, dEnd, companyId]);
             res.json({ data: ropDealsRes.rows.map((r: any) => ({
                 ...r,
                 role_label: 'РОП',
@@ -2073,11 +2101,11 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                 subcontractor_amount
             FROM deal_table_rows
             WHERE (agent_id = $1 OR agent_name = $2)
-              AND year = $3 AND month = $4
+              AND deal_date >= $3 AND deal_date < $4
               AND status IN ('approved', 'active')
               AND company_id = $5
             ORDER BY payment_date DESC NULLS LAST
-        `, [userId, profileName, periodYear, periodMonth, companyId, 'agent']);
+        `, [userId, profileName, dStart, dEnd, companyId, 'agent']);
 
         // 2. Deals where user is subcontractor
         const subDealsRes = await query(`
@@ -2098,7 +2126,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                 subcontractor_amount
             FROM deal_table_rows
             WHERE subcontractor_id = $1
-              AND year = $2 AND month = $3
+              AND deal_date >= $2 AND deal_date < $3
               AND status IN ('approved', 'active')
               AND company_id = $4
               AND subcontractor_amount > 0
@@ -2106,7 +2134,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
               AND payment_date <> ''
               AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
             ORDER BY payment_date DESC
-        `, [userId, periodYear, periodMonth, companyId, 'subcontractor']);
+        `, [userId, dStart, dEnd, companyId, 'subcontractor']);
 
         // 3. Mortgage service rows where user is agent
         const mortgageAgentRes = await query(`
@@ -2125,11 +2153,11 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                 0 as subcontractor_amount
             FROM mortgage_service_rows
             WHERE agent_id = $1
-              AND year = $2 AND month = $3
+              AND deal_date >= $2 AND deal_date < $3
               AND status = 'approved'
               AND company_id = $4
             ORDER BY deal_date DESC
-        `, [userId, periodYear, periodMonth, companyId, 'mortgage_agent']);
+        `, [userId, dStart, dEnd, companyId, 'mortgage_agent']);
 
         // 4. Mortgage service rows where user is broker
         const mortgageBrokerRes = await query(`
@@ -2148,11 +2176,11 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                 0 as subcontractor_amount
             FROM mortgage_service_rows
             WHERE broker_id = $1
-              AND year = $2 AND month = $3
+              AND deal_date >= $2 AND deal_date < $3
               AND status = 'approved'
               AND company_id = $4
             ORDER BY deal_date DESC
-        `, [userId, periodYear, periodMonth, companyId, 'mortgage_broker']);
+        `, [userId, dStart, dEnd, companyId, 'mortgage_broker']);
 
         const allDeals = [
             ...agentDealsRes.rows.map((r: any) => ({
