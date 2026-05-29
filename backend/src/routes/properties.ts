@@ -314,6 +314,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response): Promise<
             SELECT p.*, 
                    pr.full_name as owner_name, pr.avatar_url as owner_avatar,
                    br.name as branch_name, t.name as team_name,
+                   l.full_name as lead_name, l.phone as lead_phone,
                    (SELECT COUNT(*) FROM property_photos ph WHERE ph.property_id = p.id) as photo_count,
                    (SELECT ph.file_url FROM property_photos ph WHERE ph.property_id = p.id ORDER BY ph.sort_order LIMIT 1) as cover_url,
                    (SELECT ph.id FROM property_photos ph WHERE ph.property_id = p.id AND ph.file_data IS NOT NULL ORDER BY ph.sort_order LIMIT 1) as cover_photo_db_id,
@@ -324,6 +325,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response): Promise<
             LEFT JOIN profiles pr ON p.owner_id = pr.id
             LEFT JOIN branches br ON p.branch_id = br.id
             LEFT JOIN teams t ON p.team_id = t.id
+            LEFT JOIN leads l ON p.lead_id = l.id
             ${where}
             ORDER BY p.created_at DESC
             LIMIT $${params.length + 1} OFFSET $${params.length + 2}
@@ -359,11 +361,13 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
         const { company_id: companyId } = req.user!;
         const result = await query(`
             SELECT p.*, pr.full_name as owner_name, pr.avatar_url as owner_avatar,
-                   br.name as branch_name, t.name as team_name
+                   br.name as branch_name, t.name as team_name,
+                   l.full_name as lead_name, l.phone as lead_phone
             FROM properties p
             LEFT JOIN profiles pr ON p.owner_id = pr.id
             LEFT JOIN branches br ON p.branch_id = br.id
             LEFT JOIN teams t ON p.team_id = t.id
+            LEFT JOIN leads l ON p.lead_id = l.id
             WHERE p.id = $1 AND p.company_id = $2
         `, [req.params.id, companyId]);
 
@@ -432,11 +436,12 @@ router.post('/', authenticateToken, [
             pets_allowed, children_allowed, prepayment, deposit_amount, lease_term, tenant_requirements,
             infrastructure, transport_accessibility,
             object_type, bathroom_location, smoking_allowed, apartment_type,
-            client_id, utility_details, source_type
+            client_id, utility_details, source_type, lead_id, external_name
         } = req.body;
         const now = new Date().toISOString();
 
-        if (!client_id) {
+        const effectiveSourceType = source_type || 'client';
+        if (effectiveSourceType === 'client' && !client_id) {
             res.status(400).json({ error: { message: 'Поле "Клиент" обязательно' } });
             return;
         }
@@ -453,7 +458,7 @@ router.post('/', authenticateToken, [
                 pets_allowed, children_allowed, prepayment, deposit_amount, lease_term, tenant_requirements,
                 infrastructure, transport_accessibility,
                 object_type, bathroom_location, smoking_allowed, apartment_type,
-                client_id, utility_details, source_type,
+                client_id, utility_details, source_type, lead_id, external_name,
                 status, created_at, updated_at
             )
             VALUES (
@@ -466,7 +471,7 @@ router.post('/', authenticateToken, [
                 $59,
                 $60,
                 $61,
-                $62,$63,$64
+                $62,$63,$64,$65,$66
             )
         `, [
             id, user.company_id, user.id, user.branch_id, user.team_id,
@@ -483,6 +488,8 @@ router.post('/', authenticateToken, [
             client_id || null,
             utility_details || null,
             source_type || 'client',
+            lead_id || null,
+            external_name || null,
             'draft', now, now
         ]);
 
@@ -554,11 +561,12 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response): Promi
             pets_allowed, children_allowed, prepayment, deposit_amount, lease_term, tenant_requirements,
             infrastructure, transport_accessibility,
             object_type, bathroom_location, smoking_allowed, apartment_type,
-            client_id, utility_details, source_type
+            client_id, utility_details, source_type, lead_id, external_name
         } = req.body;
         const now = new Date().toISOString();
 
-        if (!prop.client_id && !client_id) {
+        const effectiveSourceType = source_type || prop.source_type || 'client';
+        if (effectiveSourceType === 'client' && !prop.client_id && !client_id) {
             res.status(400).json({ error: { message: 'Поле "Клиент" обязательно' } });
             return;
         }
@@ -598,8 +606,10 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response): Promi
                 client_id=COALESCE($54,client_id),
                 utility_details=COALESCE($55,utility_details),
                 source_type=COALESCE($56,source_type),
-                updated_at=$57 ${statusUpdate}
-            WHERE id=$58
+                lead_id=COALESCE($57,lead_id),
+                external_name=COALESCE($58,external_name),
+                updated_at=$59 ${statusUpdate}
+            WHERE id=$60
         `, [
             category, city, address, lat, lng, price,
             area_total, area_living, area_kitchen, rooms, floor, floors_total, description,
@@ -613,6 +623,8 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response): Promi
             client_id || null,
             utility_details || null,
             source_type || null,
+            lead_id || null,
+            external_name || null,
             now, propId
         ]);
 

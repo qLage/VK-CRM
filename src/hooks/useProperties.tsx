@@ -67,6 +67,8 @@ export interface Property {
   transfer_status: string | null;
   transfer_to_user_id: string | null;
   transfer_to_name: string | null;
+  lead_name?: string | null;
+  lead_phone?: string | null;
   // Detail
   photos?: PropertyPhoto[];
   transfers?: PropertyTransfer[];
@@ -143,6 +145,8 @@ export interface PropertyCreate {
   gas_supply?: string;
   built_year?: number;
   client_id?: string;
+  lead_id?: string;
+  external_name?: string;
   source_type?: 'client' | 'lead' | 'external';
   // Avito rent fields
   furniture?: string;

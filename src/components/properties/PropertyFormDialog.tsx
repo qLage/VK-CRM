@@ -22,6 +22,7 @@ import { formatPhoneRu } from '@/lib/phone-utils';
 import { localAPI } from '@/integrations/localAPI';
 import { useAuth } from '@/hooks/useAuth';
 import { useClient, useClientSearch, useClientAccessCheck } from '@/hooks/useClients';
+import { useQuery } from '@tanstack/react-query';
 import { compressImages, type CompressedPhoto } from '@/lib/imageCompress';
 import Sortable from 'sortablejs';
 
@@ -957,6 +958,8 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
     object_type: (initialData as any)?.object_type || undefined,
     bathroom_location: (initialData as any)?.bathroom_location || undefined,
     apartment_type: (initialData as any)?.apartment_type || undefined,
+    lead_id: (initialData as any)?.lead_id || undefined,
+    external_name: (initialData as any)?.external_name || '',
     smoking_allowed: (initialData as any)?.smoking_allowed || undefined,
     deal_type: (initialData as any)?.deal_type || undefined,
     room_type: (initialData as any)?.room_type || undefined,
@@ -997,6 +1000,9 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
   const [selectedClient, setSelectedClient] = useState<{ id: string; full_name: string; phone: string } | null>(null);
   const [newClientData, setNewClientData] = useState<{ full_name: string; phone: string; birthday?: string; comment?: string } | null>(null);
   const [sourceType, setSourceType] = useState<PropertySourceType>('client');
+  const [leadSearch, setLeadSearch] = useState('');
+  const [selectedLead, setSelectedLead] = useState<{ id: string; full_name: string; phone?: string } | null>(null);
+  const [leadDropdownOpen, setLeadDropdownOpen] = useState(false);
   const setFormField = useCallback((key: string, value: any) => setForm((f) => ({ ...f, [key]: value })), []);
 
   // Dirty-check state
@@ -1005,9 +1011,9 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
 
   const isDirty = useMemo(() => {
     if (!initialSnapshot) return false;
-    const current = JSON.stringify({ form, photos, client: selectedClient, newClient: newClientData });
+    const current = JSON.stringify({ form, photos, client: selectedClient, newClient: newClientData, sourceType, lead: selectedLead });
     return current !== initialSnapshot;
-  }, [form, photos, selectedClient, newClientData, initialSnapshot]);
+  }, [form, photos, selectedClient, newClientData, sourceType, selectedLead, initialSnapshot]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && isDirty) {
@@ -1028,6 +1034,21 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
     ? String((initialData as any)?.client_id || form.client_id || '')
     : '';
   const { data: linkedClient } = useClient(linkedClientId || null);
+
+  const leadQ = leadSearch.trim();
+  const { data: rawLeadRows = [] } = useQuery({
+    queryKey: ['property-dialog-leads', leadQ],
+    queryFn: async () => {
+      const { data, error } = await localAPI.request(
+        `/leads?search=${encodeURIComponent(leadQ)}&limit=35&page=1`
+      );
+      if (error) throw error;
+      return Array.isArray((data as { leads?: unknown[] })?.leads) ? (data as { leads: any[] }).leads : [];
+    },
+    enabled: open && sourceType === 'lead' && leadQ.length >= 2,
+    staleTime: 15000,
+  });
+
   const wasOpenRef = useRef(false);
 
   useEffect(() => {
@@ -1049,7 +1070,10 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
       }
       setNewClientData(null);
       setClientSearch('');
-      setSourceType((initialData as any)?.source_type || 'client');
+      setLeadSearch('');
+      setLeadDropdownOpen(false);
+      const initialSourceType: PropertySourceType = (initialData as any)?.source_type || 'client';
+      setSourceType(initialSourceType);
 
       const initialClientId = (initialData as any)?.client_id || nextForm.client_id;
       const initialClient = initialClientId
@@ -1060,6 +1084,17 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
           }
         : null;
       setSelectedClient(initialClient);
+
+      const initialLeadId = (initialData as any)?.lead_id;
+      const initialLead = initialLeadId
+        ? {
+            id: String(initialLeadId),
+            full_name: (initialData as any)?.lead_name || 'Лид',
+            phone: (initialData as any)?.lead_phone || '',
+          }
+        : null;
+      setSelectedLead(initialLead);
+      if (initialLead) setLeadSearch(initialLead.full_name);
 
       // Save snapshot for dirty-check
       const initialPhotos = initialData?.photos && initialData.photos.length > 0
@@ -1075,7 +1110,8 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
         photos: initialPhotos,
         client: initialClient,
         newClient: null,
-        sourceType: (initialData as any)?.source_type || 'client'
+        lead: initialLead,
+        sourceType: initialSourceType
       }));
     }
     wasOpenRef.current = open;
@@ -1165,10 +1201,19 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
 
   const isValid = useMemo(() => {
     const desc = (form.description || '').trim();
-    const hasClient = clientAccessCheck?.restricted
+    let hasParty = clientAccessCheck?.restricted
       ? true
-      : Boolean(form.client_id || selectedClient?.id || newClientData?.full_name?.trim());
-    const hasBase = !!(form.category && form.city?.trim() && form.address?.trim() && form.price && desc.length >= MIN_DESCRIPTION_LENGTH && hasClient);
+      : false;
+    if (!clientAccessCheck?.restricted) {
+      if (sourceType === 'client') {
+        hasParty = Boolean(form.client_id || selectedClient?.id || newClientData?.full_name?.trim());
+      } else if (sourceType === 'lead') {
+        hasParty = Boolean(selectedLead?.id);
+      } else {
+        hasParty = Boolean((form.external_name || '').trim());
+      }
+    }
+    const hasBase = !!(form.category && form.city?.trim() && form.address?.trim() && form.price && desc.length >= MIN_DESCRIPTION_LENGTH && hasParty);
     if (!hasBase) return false;
 
     if (isAptSell) {
@@ -1185,7 +1230,7 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
     }
     // commercial — only base fields required
     return true;
-  }, [form, isAptSell, isAptRent, isHouse, isLand, clientAccessCheck?.restricted, selectedClient?.id, newClientData?.full_name]);
+  }, [form, isAptSell, isAptRent, isHouse, isLand, clientAccessCheck?.restricted, selectedClient?.id, newClientData?.full_name, sourceType, selectedLead?.id]);
 
   // ── Duplicate detection (debounced) ─────────────────────────────────────
 
@@ -1216,15 +1261,25 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
     if (!isValid || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     try {
-      const formData = { ...form, source_type: sourceType };
+      const formData: any = { ...form, source_type: sourceType };
       if (formData.renovation === 'without') {
         formData.renovation = 'requires';
       }
-      if (selectedClient) {
-        formData.client_id = selectedClient.id;
+      if (sourceType === 'client') {
+        if (selectedClient) {
+          formData.client_id = selectedClient.id;
+        }
+      } else if (sourceType === 'lead') {
+        if (selectedLead) {
+          formData.lead_id = selectedLead.id;
+          formData.client_id = undefined;
+        }
+      } else {
+        formData.external_name = (form.external_name || '').trim();
+        formData.client_id = undefined;
       }
       const newPhotos = photos.filter(p => p.file).map(p => p.file!);
-      await onSubmit(formData, newPhotos.length > 0 ? newPhotos : undefined, newClientData || undefined);
+      await onSubmit(formData, newPhotos.length > 0 ? newPhotos : undefined, sourceType === 'client' ? (newClientData || undefined) : undefined);
       onOpenChange(false);
     } finally {
       isSubmittingRef.current = false;
@@ -1855,51 +1910,132 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
             {/* ═══ Client ═══ */}
             {!clientAccessCheck?.restricted && (
               <div id="section-client" className="space-y-4 pt-4 border-t border-white/5">
-                <SectionHeader icon={UserRound} color="violet" label="Клиент *" />
-                <SourceTypeToggle value={sourceType} onChange={setSourceType} />
+                <SectionHeader icon={UserRound} color="violet" label={sourceType === 'external' ? 'Владелец *' : 'Клиент *'} />
+                <SourceTypeToggle value={sourceType} onChange={(next) => {
+                  setSourceType(next);
+                  setSelectedClient(null);
+                  setNewClientData(null);
+                  setSelectedLead(null);
+                  setLeadSearch('');
+                  setLeadDropdownOpen(false);
+                  setFormField('client_id', undefined);
+                  setFormField('lead_id', undefined);
+                  setFormField('external_name', undefined);
+                }} />
                 
-                {selectedClient ? (
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
-                    <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center">
-                      <span className="text-xs font-bold text-violet-300">{selectedClient.full_name.charAt(0)}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{selectedClient.full_name}</p>
-                      {selectedClient.phone && <p className="text-[10px] text-white/50">{selectedClient.phone}</p>}
-                    </div>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => { setSelectedClient(null); setClientSearch(''); setFormField('client_id', undefined); }}>
-                      ✕
-                    </Button>
-                  </div>
-                ) : newClientData ? (
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                      <span className="text-xs font-bold text-emerald-300">{newClientData.full_name.charAt(0)}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{newClientData.full_name} <span className="text-[9px] text-emerald-400 uppercase">(новый)</span></p>
-                      {newClientData.phone && <p className="text-[10px] text-white/50">{newClientData.phone}</p>}
-                    </div>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setNewClientData(null)}>
-                      ✕
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <ClientAutocomplete
-                      value={clientSearch}
-                      onChange={setClientSearch}
-                      suggestions={clientSuggestions}
-                      onSelect={(c) => { setSelectedClient(c); setFormField('client_id', c.id); }}
-                      inputCls={cn(inputCls, 'normal-case tracking-normal')}
-                    />
-                    {clientSearch.length >= 2 && clientSuggestions.length === 0 && (
-                      <NewClientInlineForm
-                        defaultName={clientSearch}
-                        onSave={(data) => setNewClientData(data)}
-                        inputCls={inputCls}
-                      />
+                {/* ── Client mode ── */}
+                {sourceType === 'client' && (
+                  <>
+                    {selectedClient ? (
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                        <div className="w-8 h-8 rounded-full bg-violet-500/20 flex items-center justify-center">
+                          <span className="text-xs font-bold text-violet-300">{selectedClient.full_name.charAt(0)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{selectedClient.full_name}</p>
+                          {selectedClient.phone && <p className="text-[10px] text-white/50">{selectedClient.phone}</p>}
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => { setSelectedClient(null); setClientSearch(''); setFormField('client_id', undefined); }}>
+                          ✕
+                        </Button>
+                      </div>
+                    ) : newClientData ? (
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                          <span className="text-xs font-bold text-emerald-300">{newClientData.full_name.charAt(0)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{newClientData.full_name} <span className="text-[9px] text-emerald-400 uppercase">(новый)</span></p>
+                          {newClientData.phone && <p className="text-[10px] text-white/50">{newClientData.phone}</p>}
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setNewClientData(null)}>
+                          ✕
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <ClientAutocomplete
+                          value={clientSearch}
+                          onChange={setClientSearch}
+                          suggestions={clientSuggestions}
+                          onSelect={(c) => { setSelectedClient(c); setFormField('client_id', c.id); }}
+                          inputCls={cn(inputCls, 'normal-case tracking-normal')}
+                        />
+                        {clientSearch.length >= 2 && clientSuggestions.length === 0 && (
+                          <NewClientInlineForm
+                            defaultName={clientSearch}
+                            onSave={(data) => setNewClientData(data)}
+                            inputCls={inputCls}
+                          />
+                        )}
+                      </div>
                     )}
+                  </>
+                )}
+
+                {/* ── Lead mode ── */}
+                {sourceType === 'lead' && (
+                  <div className="space-y-3 relative">
+                    <div className="relative">
+                      <Input
+                        value={leadSearch}
+                        onChange={(e) => { setLeadSearch(e.target.value); setLeadDropdownOpen(true); }}
+                        onFocus={() => setLeadDropdownOpen(true)}
+                        placeholder="Поиск лида из базы…"
+                        className={cn(inputCls, 'normal-case tracking-normal')}
+                      />
+                      {selectedLead && (
+                        <div className="mt-2 flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                          <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                            <span className="text-xs font-bold text-amber-300">{selectedLead.full_name.charAt(0)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{selectedLead.full_name}</p>
+                            {selectedLead.phone && <p className="text-[10px] text-white/50">{selectedLead.phone}</p>}
+                          </div>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => { setSelectedLead(null); setLeadSearch(''); }}>
+                            ✕
+                          </Button>
+                        </div>
+                      )}
+                      {leadDropdownOpen && leadQ.length >= 2 && !selectedLead && (
+                        <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-zinc-900 shadow-xl">
+                          {rawLeadRows.length > 0 ? (
+                            rawLeadRows.map((l: any) => (
+                              <button
+                                key={l.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedLead({ id: l.id, full_name: l.full_name, phone: l.phone });
+                                  setLeadDropdownOpen(false);
+                                  setLeadSearch(l.full_name);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 flex flex-col"
+                              >
+                                <span className="font-medium">{l.full_name}</span>
+                                {l.phone && <span className="text-[10px] text-white/40">{l.phone}</span>}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-sm text-white/40">Ничего не найдено</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-white/30">Нового лида здесь создать нельзя — только выбор из базы «Лиды».</p>
+                  </div>
+                )}
+
+                {/* ── External mode ── */}
+                {sourceType === 'external' && (
+                  <div className="space-y-2">
+                    <Input
+                      value={form.external_name || ''}
+                      onChange={(e) => setFormField('external_name', e.target.value)}
+                      placeholder="ФИО или название владельца"
+                      className={cn(inputCls, 'normal-case tracking-normal')}
+                    />
+                    <p className="text-[10px] text-white/30">Внешний контакт не сохраняется в базу клиентов.</p>
                   </div>
                 )}
               </div>

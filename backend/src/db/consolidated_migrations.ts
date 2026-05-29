@@ -1228,6 +1228,13 @@ async function purgeData(): Promise<void> {
             console.error('❌ Data eradication failed:', err);
         }
     }
+
+    // --- Properties source_type / lead_id / external_name ---
+    await query(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS source_type VARCHAR(20) DEFAULT 'client'`).catch(() => {});
+    await query(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS lead_id TEXT REFERENCES leads(id) ON DELETE SET NULL`).catch(() => {});
+    await query(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS external_name TEXT`).catch(() => {});
+    await query(`CREATE INDEX IF NOT EXISTS idx_properties_source_type ON properties(source_type)`).catch(() => {});
+    await query(`CREATE INDEX IF NOT EXISTS idx_properties_lead_id ON properties(lead_id)`).catch(() => {});
 }
 
 async function runConsolidatedMigrations(): Promise<void> {
