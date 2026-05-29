@@ -769,7 +769,7 @@ function NewClientInlineForm({ defaultName, onSave, inputCls }: {
           <Input value={defaultName} disabled className={cn(inputCls, 'mt-1 opacity-70 normal-case tracking-normal')} />
         </div>
         <div>
-          <label className="text-[9px] text-white/30 uppercase tracking-widest">Телефон</label>
+          <label className="text-[9px] text-white/30 uppercase tracking-widest">Телефон <span className="text-red-500">*</span></label>
           <Input
             value={phone}
             onChange={(e) => handlePhoneChange(e.target.value)}
@@ -792,6 +792,7 @@ function NewClientInlineForm({ defaultName, onSave, inputCls }: {
         type="button"
         size="sm"
         variant="outline"
+        disabled={!phone.trim()}
         onClick={() => onSave({ full_name: defaultName, phone, birthday: birthday || undefined, comment: comment || undefined })}
         className="text-[9px] uppercase tracking-widest"
       >

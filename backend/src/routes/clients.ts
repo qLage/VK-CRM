@@ -295,6 +295,9 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
     if (!full_name?.trim()) {
       return res.status(400).json({ error: 'ФИО обязательно' });
     }
+    if (!phone?.trim()) {
+      return res.status(400).json({ error: 'Телефон обязателен' });
+    }
 
     const id = uuidv4();
     const result = await query(

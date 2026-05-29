@@ -35,7 +35,7 @@ function formatDate(d: string | null) {
 }
 
 export default function Clients() {
-  const { accessLevel } = useAuth();
+  const { user, accessLevel } = useAuth();
   const { data: accessCheck } = useClientAccessCheck();
 
   const [search, setSearch] = useState('');
@@ -49,11 +49,19 @@ export default function Clients() {
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [detailClient, setDetailClient] = useState<Client | null>(null);
   const [showAccessSettings, setShowAccessSettings] = useState(false);
+  const [myClientsOnly, setMyClientsOnly] = useState(false);
 
   const { branches, teams } = useSharedData();
   const { data: employees = [] } = useEmployeesData();
 
-  const { data, isLoading } = useClients({ search, status: statusFilter, branch_id: branchFilter, team_id: teamFilter, created_by: employeeFilter, page });
+  const { data, isLoading } = useClients({
+    search,
+    status: statusFilter,
+    branch_id: branchFilter,
+    team_id: teamFilter,
+    created_by: myClientsOnly ? user?.id : employeeFilter,
+    page,
+  });
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
   const deleteMutation = useDeleteClient();
@@ -195,6 +203,38 @@ export default function Clients() {
         {/* ── HEADER ACTIONS (Search + Filters + Create) ── */}
         <div className="flex flex-col md:flex-row gap-3 md:gap-4 items-stretch md:items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3 flex-1 max-w-2xl">
+            {(accessLevel >= 50 || (accessLevel < 50 && user?.team_id)) && (
+              <div className="flex gap-1 p-0.5 bg-zinc-900/60 border border-white/10 rounded-lg shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setMyClientsOnly(true); setPage(1); }}
+                  className={cn(
+                    'gap-1.5 h-9 px-2.5 md:px-3 transition-all text-[10px] font-bold uppercase',
+                    myClientsOnly
+                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                      : 'text-white/60 hover:text-white hover:bg-white/5'
+                  )}
+                >
+                  <User className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Мои</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setMyClientsOnly(false); setPage(1); }}
+                  className={cn(
+                    'gap-1.5 h-9 px-2.5 md:px-3 transition-all text-[10px] font-bold uppercase',
+                    !myClientsOnly
+                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                      : 'text-white/60 hover:text-white hover:bg-white/5'
+                  )}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Филиал</span>
+                </Button>
+              </div>
+            )}
             <div className="flex-1 relative">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 z-0 h-4 w-4 -translate-y-1/2 text-white/30" aria-hidden />
               <Input
@@ -497,7 +537,9 @@ function ClientFormDialog({ open, client, onClose, onSubmit, loading }: {
             />
           </div>
           <div>
-            <label className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2 block">Телефон</label>
+            <label className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2 block">
+              Телефон <span className="text-red-500">*</span>
+            </label>
             <Input
               value={form.phone}
               onChange={e => setForm(f => ({ ...f, phone: formatPhoneRu(e.target.value) }))}
@@ -541,7 +583,7 @@ function ClientFormDialog({ open, client, onClose, onSubmit, loading }: {
             Отмена
           </Button>
           <Button
-            disabled={!form.full_name.trim() || loading}
+            disabled={!form.full_name.trim() || !form.phone?.trim() || loading}
             onClick={() => onSubmit(form)}
             className="flex-1 h-11 rounded-xl bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20 disabled:opacity-40"
           >
