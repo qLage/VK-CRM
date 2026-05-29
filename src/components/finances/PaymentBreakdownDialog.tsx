@@ -64,6 +64,8 @@ export function PaymentBreakdownDialog({
   const [tempEditValue, setTempEditValue] = useState<string>('');
   const [paidComponents, setPaidComponents] = useState<Set<string>>(new Set());
   const [personalIncomeOpen, setPersonalIncomeOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [departmentOpen, setDepartmentOpen] = useState(false);
   const [applySelfEmployedTax, setApplySelfEmployedTax] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const { transactions } = useFinances();
@@ -636,12 +638,16 @@ export function PaymentBreakdownDialog({
 
                       {!isEditing && !isPaid && (
                         <div className="flex items-center gap-2">
-                          {component.id === 'personal_income' && (
+                          {(component.id === 'personal_income' || component.id === 'team_revenue' || component.id === 'department_revenue') && (
                             <Button
                               size="sm"
                               variant="ghost"
                               className="h-9 px-3 rounded-xl bg-white/5 text-muted-foreground hover:text-white flex-shrink-0"
-                              onClick={() => setPersonalIncomeOpen(true)}
+                              onClick={() => {
+                                if (component.id === 'personal_income') setPersonalIncomeOpen(true);
+                                if (component.id === 'team_revenue') setTeamOpen(true);
+                                if (component.id === 'department_revenue') setDepartmentOpen(true);
+                              }}
                             >
                               <List className="h-3.5 w-3.5 mr-1.5" />
                               Детали
@@ -717,6 +723,7 @@ export function PaymentBreakdownDialog({
         userName={employee.full_name}
         year={py}
         month={pm}
+        role="agent"
         onPayDeal={(deals, total) => {
           const currentMonthName = format(new Date(), 'LLLL', { locale: ru });
           const dealDetails = deals.map(d => d.label).join(', ');
@@ -733,6 +740,62 @@ export function PaymentBreakdownDialog({
 
           setPaidComponents(prev => new Set(prev).add('personal_income'));
           setPersonalIncomeOpen(false);
+          setOpen(false);
+        }}
+      />
+
+    <PersonalIncomeDetailDialog
+        open={teamOpen}
+        onOpenChange={setTeamOpen}
+        userId={employee.id}
+        userName={employee.full_name}
+        year={py}
+        month={pm}
+        role="mop"
+        onPayDeal={(deals, total) => {
+          const currentMonthName = format(new Date(), 'LLLL', { locale: ru });
+          const dealDetails = deals.map(d => d.label).join(', ');
+          const description = `Выплата за ${currentMonthName} — ${employee.full_name} (Команда (МОП): ${total.toLocaleString('ru-RU')} ₽ — ${dealDetails})`;
+
+          onPaymentComplete({
+            type: 'expense',
+            category: 'salary',
+            description,
+            amount: total,
+            account_type: accountType,
+            related_user_id: employee.id,
+          });
+
+          setPaidComponents(prev => new Set(prev).add('team_revenue'));
+          setTeamOpen(false);
+          setOpen(false);
+        }}
+      />
+
+    <PersonalIncomeDetailDialog
+        open={departmentOpen}
+        onOpenChange={setDepartmentOpen}
+        userId={employee.id}
+        userName={employee.full_name}
+        year={py}
+        month={pm}
+        role="rop"
+        onPayDeal={(deals, total) => {
+          const currentMonthName = format(new Date(), 'LLLL', { locale: ru });
+          const dealDetails = deals.map(d => d.label).join(', ');
+          const description = `Выплата за ${currentMonthName} — ${employee.full_name} (РОП / филиал: ${total.toLocaleString('ru-RU')} ₽ — ${dealDetails})`;
+
+          onPaymentComplete({
+            type: 'expense',
+            category: 'salary',
+            description,
+            amount: total,
+            account_type: accountType,
+            related_user_id: employee.id,
+          });
+
+          setPaidComponents(prev => new Set(prev).add('department_revenue'));
+          setDepartmentOpen(false);
           setOpen(false);
         }}
       />

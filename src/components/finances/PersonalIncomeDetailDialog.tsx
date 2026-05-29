@@ -36,6 +36,7 @@ interface PersonalIncomeDetailDialogProps {
   userName: string;
   year: number;
   month: number;
+  role?: 'agent' | 'mop' | 'rop';
   onPayDeal: (deals: { id: string; amount: number; label: string }[], totalAmount: number) => void;
 }
 
@@ -46,6 +47,7 @@ export function PersonalIncomeDetailDialog({
   userName,
   year,
   month,
+  role = 'agent',
   onPayDeal,
 }: PersonalIncomeDetailDialogProps) {
   const [editedAmounts, setEditedAmounts] = useState<Record<string, number>>({});
@@ -67,9 +69,9 @@ export function PersonalIncomeDetailDialog({
   const taxPercent = payrollSettings?.self_employed_tax_percent ?? 6;
 
   const { data: deals = [], isLoading } = useQuery({
-    queryKey: ['salary-deals', userId, year, month],
+    queryKey: ['salary-deals', userId, year, month, role],
     queryFn: async () => {
-      const { data, error } = await localAPI.request(`/finances/salaries/deals/${userId}?year=${year}&month=${month}`);
+      const { data, error } = await localAPI.request(`/finances/salaries/deals/${userId}?year=${year}&month=${month}&role=${role}`);
       if (error) throw error;
       return Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
     },
@@ -130,6 +132,8 @@ export function PersonalIncomeDetailDialog({
       case 'subcontractor': return <Briefcase className="h-4 w-4 text-amber-400" />;
       case 'mortgage_agent':
       case 'mortgage_broker': return <Percent className="h-4 w-4 text-sky-400" />;
+      case 'mop': return <User className="h-4 w-4 text-blue-400" />;
+      case 'rop': return <User className="h-4 w-4 text-purple-400" />;
       default: return <Home className="h-4 w-4 text-white/40" />;
     }
   };
@@ -140,6 +144,8 @@ export function PersonalIncomeDetailDialog({
       case 'subcontractor': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
       case 'mortgage_agent':
       case 'mortgage_broker': return 'bg-sky-500/10 text-sky-400 border-sky-500/20';
+      case 'mop': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      case 'rop': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
       default: return 'bg-white/5 text-white/40 border-white/10';
     }
   };
@@ -149,9 +155,11 @@ export function PersonalIncomeDetailDialog({
       <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-4xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[90vh] flex flex-col" style={{ '--dialog-content-max-width': '56rem' } as React.CSSProperties}>
         <div className="p-6 md:p-8 space-y-6 flex-1 overflow-hidden flex flex-col">
           <DialogHeader className="space-y-1 shrink-0">
-            <DialogTitle className="text-xl md:text-2xl font-bold text-white tracking-tight">Личный доход</DialogTitle>
+            <DialogTitle className="text-xl md:text-2xl font-bold text-white tracking-tight">
+              {role === 'mop' ? 'Команда (МОП)' : role === 'rop' ? 'РОП / филиал' : 'Личный доход'}
+            </DialogTitle>
             <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
+              <span className={`w-1.5 h-1.5 rounded-full ${role === 'mop' ? 'bg-blue-500/60' : role === 'rop' ? 'bg-purple-500/60' : 'bg-emerald-500/60'}`} />
               {userName}
             </p>
           </DialogHeader>

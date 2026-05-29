@@ -1980,15 +1980,81 @@ router.post('/recalculate', authenticateToken, requirePermission('can_manage_fin
 router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_view_finances'), async (req: Request, res: Response): Promise<void> => {
     try {
         const { userId } = req.params;
-        const { month, year } = req.query;
+        const { month, year, role } = req.query;
         const companyId = (req.user as any)?.company_id as string | undefined;
 
         const periodYear = year ? parseInt(year as string) : new Date().getFullYear();
         const periodMonth = month ? parseInt(month as string) : (new Date().getMonth() + 1);
+        const roleFilter = role ? String(role) : 'agent';
 
-        // 1. Deals where user is agent (personal income)
         const profileNameRes = await query(`SELECT full_name FROM profiles WHERE id = $1`, [userId]);
         const profileName = profileNameRes.rows[0]?.full_name || '';
+
+        if (roleFilter === 'mop') {
+            const mopDealsRes = await query(`
+                SELECT
+                    id,
+                    property_name,
+                    commission_seller_fact,
+                    commission_buyer_fact,
+                    mortgage_deduction,
+                    mop_revenue as amount,
+                    agent_percent_seller,
+                    agent_percent_buyer,
+                    deal_date,
+                    payment_date,
+                    created_at,
+                    'mop'::text as role_type,
+                    subcontractor_id,
+                    subcontractor_amount
+                FROM deal_table_rows
+                WHERE (mop_id = $1 OR mop_name = $2)
+                  AND year = $3 AND month = $4
+                  AND status IN ('approved', 'active')
+                  AND company_id = $5
+                ORDER BY payment_date DESC NULLS LAST
+            `, [userId, profileName, periodYear, periodMonth, companyId]);
+            res.json({ data: mopDealsRes.rows.map((r: any) => ({
+                ...r,
+                role_label: 'МОП',
+                amount: Math.round(parseFloat(r.amount) || 0),
+            })) });
+            return;
+        }
+
+        if (roleFilter === 'rop') {
+            const ropDealsRes = await query(`
+                SELECT
+                    id,
+                    property_name,
+                    commission_seller_fact,
+                    commission_buyer_fact,
+                    mortgage_deduction,
+                    rop_payout as amount,
+                    agent_percent_seller,
+                    agent_percent_buyer,
+                    deal_date,
+                    payment_date,
+                    created_at,
+                    'rop'::text as role_type,
+                    subcontractor_id,
+                    subcontractor_amount
+                FROM deal_table_rows
+                WHERE (rop_id = $1 OR rop_name = $2)
+                  AND year = $3 AND month = $4
+                  AND status IN ('approved', 'active')
+                  AND company_id = $5
+                ORDER BY payment_date DESC NULLS LAST
+            `, [userId, profileName, periodYear, periodMonth, companyId]);
+            res.json({ data: ropDealsRes.rows.map((r: any) => ({
+                ...r,
+                role_label: 'РОП',
+                amount: Math.round(parseFloat(r.amount) || 0),
+            })) });
+            return;
+        }
+
+        // Default: agent + subcontractor + mortgage
         const agentDealsRes = await query(`
             SELECT
                 id,
