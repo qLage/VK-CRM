@@ -839,7 +839,7 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                 )
                   AND deal_date >= $3 AND deal_date < $4
                   AND status IN ('approved', 'active')
-            `, [emp.id, emp.full_name, start, end]);
+            `, [emp.id, emp.full_name, pStart, pEnd]);
             console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal:`, personalRes.rows[0]);
 
             let financePersonalBonus = 0;
