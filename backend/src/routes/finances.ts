@@ -980,6 +980,9 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
             FROM deal_table_rows
             WHERE (agent_id = $1) AND year = $2 AND month = ANY($3)
               AND status IN ('approved', 'active')
+              AND payment_date IS NOT NULL
+              AND payment_date <> ''
+              AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
         `, [userId, periodYear, periodMonths]);
 
         const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
@@ -991,6 +994,9 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
             FROM deal_table_rows
             WHERE (mop_id = $1) AND year = $2 AND month = ANY($3)
               AND status IN ('approved', 'active')
+              AND payment_date IS NOT NULL
+              AND payment_date <> ''
+              AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
         `, [userId, periodYear, periodMonths]);
         const teamBonus = Math.round(parseFloat(mopBonusRes.rows[0]?.total) || 0);
 
@@ -999,6 +1005,9 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
             FROM deal_table_rows
             WHERE (rop_id = $1) AND year = $2 AND month = ANY($3)
               AND status IN ('approved', 'active')
+              AND payment_date IS NOT NULL
+              AND payment_date <> ''
+              AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
         `, [userId, periodYear, periodMonths]);
         const departmentBonus = Math.round(parseFloat(ropBonusRes.rows[0]?.total) || 0);
 

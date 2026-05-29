@@ -35,7 +35,7 @@ interface MySalaryData {
 }
 
 export function KPIStats() {
-    const [incomePeriod, setIncomePeriod] = useState<'month' | 'quarter'>('quarter');
+    const [incomePeriod, setIncomePeriod] = useState<'month' | 'quarter'>('month');
 
     // Main quarterly data for the widget
     const { data: quarterData, isLoading: quarterLoading, isError: quarterIsError } = useQuery({
@@ -105,10 +105,10 @@ export function KPIStats() {
     // Compute personal income from salary data
     const personalIncome = useMemo(() => {
         if (incomePeriod === 'month') {
-            return monthSalaryData?.total_salary ?? 0;
+            return monthSalaryData?.personal_income ?? 0;
         }
         // Quarter: use the quarter endpoint result
-        return quarterSalaryData?.total_salary ?? 0;
+        return quarterSalaryData?.personal_income ?? 0;
     }, [incomePeriod, monthSalaryData, quarterSalaryData]);
 
     if (quarterLoading && !quarterData) {
