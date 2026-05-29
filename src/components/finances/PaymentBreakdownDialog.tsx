@@ -100,13 +100,14 @@ export function PaymentBreakdownDialog({
         ? employee.mortgage_income!
         : (employee.mortgage_agent_income ?? 0) + (employee.mortgage_broker_income ?? 0);
 
+    const rawPersonalIncome = Math.max(0, (employee.personal_income || 0) - (employee.finance_personal_bonus || 0));
     const personalIncomeTotal = employee.personal_income || 0;
 
     // Always show personal income (even 0) so user sees what is credited
     initialComponents.push({
       id: 'personal_income',
       label: 'Личный доход',
-      amount: personalIncomeTotal,
+      amount: rawPersonalIncome,
       color: 'text-emerald-400'
     });
 

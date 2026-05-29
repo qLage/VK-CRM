@@ -496,6 +496,7 @@ export function SalarySchedule() {
                               full_name: emp.full_name,
                               base_salary: emp.base_salary,
                               personal_income: emp.personal_income,
+                              finance_personal_bonus: emp.finance_personal_bonus,
                               mortgage_income: emp.mortgage_income,
                               mortgage_agent_income: emp.mortgage_agent_income,
                               mortgage_broker_income: emp.mortgage_broker_income,
