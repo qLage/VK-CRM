@@ -1300,7 +1300,7 @@ class KpiService {
             });
 
             // 2.5. Override "Набор базы" with count of properties created in period
-            //      (status: approved / on Avito / in feed), excluding lead-sourced objects.
+            //      (status: approved / on Avito / in feed), only client-sourced objects count.
             try {
                 const propsQuery = pool ? `
                     SELECT owner_id::TEXT as user_id, COUNT(*)::int as cnt
@@ -1308,7 +1308,7 @@ class KpiService {
                     WHERE owner_id = ANY($1::TEXT[])
                       AND created_at BETWEEN $2 AND $3
                       AND status IN ('approved', 'avito_approved', 'published_avito', 'in_feed')
-                      AND (source_type IS NULL OR source_type <> 'lead')
+                      AND (source_type IS NULL OR source_type = 'client')
                     GROUP BY owner_id
                 ` : `
                     SELECT owner_id as user_id, COUNT(*) as cnt
@@ -1316,7 +1316,7 @@ class KpiService {
                     WHERE owner_id IN (${userIds.map(() => '?').join(',')})
                       AND created_at BETWEEN ? AND ?
                       AND status IN ('approved', 'avito_approved', 'published_avito', 'in_feed')
-                      AND (source_type IS NULL OR source_type <> 'lead')
+                      AND (source_type IS NULL OR source_type = 'client')
                     GROUP BY owner_id
                 `;
                 const propsParams = pool ? [userIds, start, endDate] : [...userIds, start, endDate];
