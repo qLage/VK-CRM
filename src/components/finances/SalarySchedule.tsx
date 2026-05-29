@@ -473,7 +473,7 @@ export function SalarySchedule() {
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">{emp.position_name}</td>
                         <td className="px-4 py-3 text-right font-mono text-sm text-white/80">{Number(emp.base_salary || 0).toLocaleString('ru-RU')} ₽</td>
-                        <td className="px-4 py-3 text-right font-mono text-sm text-emerald-400">{Number(paidAmount || 0).toLocaleString('ru-RU')} ₽</td>
+                        <td className="px-4 py-3 text-right font-mono text-sm text-emerald-400">{Number(emp.personal_income || 0).toLocaleString('ru-RU')} ₽</td>
 
                         <td className="px-4 py-3 text-right font-mono text-sm text-blue-400">{Number(emp.team_revenue || 0).toLocaleString('ru-RU')} ₽</td>
                         <td className="px-4 py-3 text-right font-mono text-sm text-purple-400">{Number(emp.department_revenue || 0).toLocaleString('ru-RU')} ₽</td>
@@ -495,7 +495,7 @@ export function SalarySchedule() {
                               id: emp.id,
                               full_name: emp.full_name,
                               base_salary: emp.base_salary,
-                              personal_income: paidAmount,
+                              personal_income: emp.personal_income,
                               mortgage_income: emp.mortgage_income,
                               mortgage_agent_income: emp.mortgage_agent_income,
                               mortgage_broker_income: emp.mortgage_broker_income,
