@@ -173,8 +173,8 @@ router.get('/transactions', authenticateToken, requirePermission('can_view_finan
                         WHEN service IS NOT NULL AND (LOWER(service) LIKE '%ипотек%' OR LOWER(service) LIKE '%новостро%') THEN 'account'
                         ELSE 'cash'
                     END as account_type,
-                    updated_at::timestamp as created_at,
-                    updated_at::timestamp as updated_at,
+                    COALESCE(deal_date::timestamp, payment_date::timestamp, created_at) as created_at,
+                    COALESCE(deal_date::timestamp, payment_date::timestamp, created_at) as updated_at,
                     year::int as year,
                     month::int as month
                 FROM deal_table_rows
@@ -804,18 +804,17 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
         const salaries: any[] = [];
 
         for (const emp of Array.from(empRowsByProfile.values()).map((rows) => pickPreferredPayrollRoleRow(rows)) as any[]) {
-            // 1. Personal income (from deals where this person is the agent)
+            // 1. Personal income (from paid transactions to this employee)
             const personalRes = await query(`
                 SELECT 
-                    COALESCE(SUM(agent_income), 0) as income,
-                    COALESCE(SUM(commission_total_fact), 0) as revenue
-                FROM deal_table_rows
-                WHERE (agent_id = $1 OR agent_name = $2) AND year = $3 AND month = $4
-                  AND status IN ('approved', 'active')
-                  AND payment_date IS NOT NULL
-                  AND payment_date <> ''
-                  AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
-            `, [emp.id, emp.full_name, periodYear, periodMonth]);
+                    COALESCE(SUM(amount), 0) as income,
+                    COALESCE(SUM(amount), 0) as revenue
+                FROM transactions
+                WHERE user_id = $1
+                  AND type = 'expense'
+                  AND EXTRACT(YEAR FROM created_at) = $2
+                  AND EXTRACT(MONTH FROM created_at) = $3
+            `, [emp.id, periodYear, periodMonth]);
 
             const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
             const personalRevenueRaw = parseFloat(personalRes.rows[0]?.revenue) || 0;
@@ -973,17 +972,16 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
         const companyId = (req.user as any)?.company_id as string | undefined;
         const payrollOrg = companyId ? await getPayrollOrgSettings(companyId) : DEFAULT_PAYROLL_ORG_SETTINGS;
 
-        // Personal income (from deals where this person is the agent)
+        // Personal income (from paid transactions to this employee)
         const personalRes = await query(`
             SELECT
-                COALESCE(SUM(agent_income), 0) as income,
-                COALESCE(SUM(commission_total_fact), 0) as revenue
-            FROM deal_table_rows
-            WHERE (agent_id = $1) AND year = $2 AND month = ANY($3)
-              AND status IN ('approved', 'active')
-              AND payment_date IS NOT NULL
-              AND payment_date <> ''
-              AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
+                COALESCE(SUM(amount), 0) as income,
+                COALESCE(SUM(amount), 0) as revenue
+            FROM transactions
+            WHERE user_id = $1
+              AND type = 'expense'
+              AND EXTRACT(YEAR FROM created_at) = $2
+              AND EXTRACT(MONTH FROM created_at) = ANY($3)
         `, [userId, periodYear, periodMonths]);
 
         const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
