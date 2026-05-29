@@ -2118,7 +2118,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
     }
 });
 
-router.get('/daily-finance', authenticateToken, requirePermission('can_view_finances'), async (req: Request, res: Response): Promise<void> => {
+router.get('/daily-finance', authenticateToken, async (req: Request, res: Response): Promise<void> => {
     try {
         const companyId = (req.user as any)?.company_id as string | undefined;
         if (!companyId) {

@@ -12,6 +12,7 @@ export function EnableNotificationsPrompt() {
   const { user } = useAuth();
   const { isSupported, isLoading, subscribe } = usePushNotifications();
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(LS_PUSH_PROMPT_DISMISSED) === 'true');
+  const vapidConfigured = !!import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
   const shouldShow = useMemo(() => {
     if (!user) return false;
@@ -79,9 +80,11 @@ export function EnableNotificationsPrompt() {
             <Button variant="secondary" size="sm" onClick={enableSound}>
               Включить звук
             </Button>
-            <Button size="sm" onClick={onEnablePush} disabled={isLoading}>
-              {isLoading ? 'Подключаю…' : 'Включить уведомления'}
-            </Button>
+            {vapidConfigured && (
+              <Button size="sm" onClick={onEnablePush} disabled={isLoading}>
+                {isLoading ? 'Подключаю…' : 'Включить уведомления'}
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={dismiss}>
               Позже
             </Button>
