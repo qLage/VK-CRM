@@ -970,14 +970,16 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
         const companyId = (req.user as any)?.company_id as string | undefined;
         const payrollOrg = companyId ? await getPayrollOrgSettings(companyId) : DEFAULT_PAYROLL_ORG_SETTINGS;
 
-        // Personal income (from deals where this person is the agent)
+        // Personal income (from paid transactions to this employee)
         const personalRes = await query(`
             SELECT
-                COALESCE(SUM(agent_income), 0) as income,
-                COALESCE(SUM(commission_total_fact), 0) as revenue
-            FROM deal_table_rows
-            WHERE (agent_id = $1) AND year = $2 AND month = ANY($3)
-              AND status IN ('approved', 'active')
+                COALESCE(SUM(amount), 0) as income,
+                COALESCE(SUM(amount), 0) as revenue
+            FROM transactions
+            WHERE user_id = $1
+              AND type = 'expense'
+              AND EXTRACT(YEAR FROM created_at) = $2
+              AND EXTRACT(MONTH FROM created_at) = ANY($3)
         `, [userId, periodYear, periodMonths]);
 
         const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
