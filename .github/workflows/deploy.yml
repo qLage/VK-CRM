@@ -34,6 +34,17 @@ jobs:
             backend/src backend/package.json backend/package-lock.json backend/Dockerfile \
             docker-compose.prod.yml nginx
 
+      - name: Cleanup server before deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          script: |
+            rm -f /root/CRM/deploy.tar.gz
+            df -h /
+
       - name: Upload archive to server
         uses: appleboy/scp-action@v0.1.7
         with:
