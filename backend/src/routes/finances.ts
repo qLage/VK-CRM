@@ -384,7 +384,8 @@ router.patch('/transactions/:id', authenticateToken, requirePermission('can_mana
                         ('Комиссия по сделке: ' || COALESCE(property_name, '')) as description,
                         CASE WHEN service IS NOT NULL AND (LOWER(service) LIKE '%ипотек%' OR LOWER(service) LIKE '%новостро%')
                              THEN 'account' ELSE 'cash' END as account_type,
-                        updated_at as created_at, updated_at,
+                        COALESCE(deal_date::timestamp, payment_date::timestamp, created_at) as created_at,
+                        COALESCE(deal_date::timestamp, payment_date::timestamp, created_at) as updated_at,
                         year::int as year, month::int as month
                  FROM deal_table_rows WHERE id = $1`,
                 [id]

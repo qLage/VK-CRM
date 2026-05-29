@@ -171,7 +171,8 @@ export function EditTransactionDialog({ transaction, open, onOpenChange, onSave,
     if (m < 1 || m > 12 || y < 2000 || y > 2100) return undefined;
     const last = new Date(y, m, 0).getDate();
     if (d < 1 || d > last) return undefined;
-    return new Date(y, m - 1, d, 12, 0, 0, 0).toISOString();
+    const now = new Date();
+    return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()).toISOString();
   };
 
   const handleSave = () => {
