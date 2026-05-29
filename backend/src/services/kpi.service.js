@@ -329,7 +329,7 @@ class KpiService {
         const depositsPercent = planDeposits > 0 ? (totalDeposits / planDeposits) * 100 : 0;
         const objectsPercent = planObjects > 0 ? (totalObjects / planObjects) * 100 : 0;
         const revenuePercent = planRevenue > 0 ? (totalRevenue / planRevenue) * 100 : 0;
-        const dealsCountFact = actions.deals || 0;
+        const dealsCountFact = revenueData.deal_count || 0;
         const dealsPercent = planDeals > 0 ? (dealsCountFact / planDeals) * 100 : 0;
 
         // Average plan completion across metrics that have targets
@@ -590,8 +590,8 @@ class KpiService {
             if (r.type === 'deposit' || r.type === 'prepayment') totalDeposits += parseInt(r.count);
             if (r.type === 'meeting' || r.type === 'meeting_office') totalMeetings += parseInt(r.count);
             if (r.type === 'showing') totalShowings += parseInt(r.count);
-            if (r.type === 'deal' || r.type === 'sale') totalDeals += parseInt(r.count);
         });
+        totalDeals = teamDealsCount;
 
         // Get MOP revenue from deal_table_rows by mop_name
         let totalRevenue = 0;
@@ -624,7 +624,8 @@ class KpiService {
                 COALESCE(SUM(dtr.commission_total_fact), 0) as total_revenue,
                 COALESCE(SUM(dtr.rop_payout), 0) as rop_payout,
                 COALESCE(SUM(dtr.mortgage_deduction), 0) as mortgage_deduction,
-                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses
+                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses,
+                COUNT(*) as deal_count
                FROM deal_table_rows dtr
                WHERE (dtr.team_id::TEXT = $1 OR dtr.mop_name = $2 OR (dtr.mop_name IS NULL AND dtr.agent_name IN (SELECT full_name FROM profiles WHERE team_id = $3))) 
                  AND ${yearMonthFilter}
@@ -634,7 +635,8 @@ class KpiService {
                 COALESCE(SUM(dtr.commission_total_fact), 0) as total_revenue,
                 COALESCE(SUM(dtr.rop_payout), 0) as rop_payout,
                 COALESCE(SUM(dtr.mortgage_deduction), 0) as mortgage_deduction,
-                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses
+                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses,
+                COUNT(*) as deal_count
                FROM deal_table_rows dtr
                WHERE (dtr.team_id = ? OR dtr.mop_name = ? OR (dtr.mop_name IS NULL AND dtr.agent_name IN (SELECT full_name FROM profiles WHERE team_id = ?))) 
                  AND ${yearMonthFilter}
@@ -642,7 +644,7 @@ class KpiService {
 
         const revenueParams = [teamId || null, mopFullName || null, teamId || null];
 
-        let mopRevenue = 0, ropPayout = 0, mortgageDeduction = 0, otherExpenses = 0;
+        let mopRevenue = 0, ropPayout = 0, mortgageDeduction = 0, otherExpenses = 0, teamDealsCount = 0;
         if (pool) {
             const revRes = await query(revenueSql, revenueParams);
             const row = revRes.rows[0] || {};
@@ -651,6 +653,7 @@ class KpiService {
             ropPayout = parseFloat(row.rop_payout) || 0;
             mortgageDeduction = parseFloat(row.mortgage_deduction) || 0;
             otherExpenses = parseFloat(row.other_expenses) || 0;
+            teamDealsCount = parseInt(row.deal_count) || 0;
         } else {
             const revRow = db.prepare(revenueSql).get(...revenueParams);
             mopRevenue = parseFloat(revRow?.mop_revenue) || 0;
@@ -658,6 +661,7 @@ class KpiService {
             ropPayout = parseFloat(revRow?.rop_payout) || 0;
             mortgageDeduction = parseFloat(revRow?.mortgage_deduction) || 0;
             otherExpenses = parseFloat(revRow?.other_expenses) || 0;
+            teamDealsCount = parseInt(revRow?.deal_count) || 0;
         }
 
         // Get plan targets
@@ -867,8 +871,8 @@ class KpiService {
             if (r.type === 'deposit' || r.type === 'prepayment') totalDeposits += parseInt(r.count);
             if (r.type === 'meeting' || r.type === 'meeting_office') totalMeetings += parseInt(r.count);
             if (r.type === 'showing') totalShowings += parseInt(r.count);
-            if (r.type === 'deal' || r.type === 'sale') totalDeals += parseInt(r.count);
         });
+        totalDeals = branchDealsCount;
 
         console.log('[calculateBranchKPI] Calculated totals:', { totalDeposits, totalObjects, totalMeetings, totalShowings, totalDeals });
 
@@ -894,7 +898,8 @@ class KpiService {
                 COALESCE(SUM(dtr.mop_revenue), 0) as mop_revenue,
                 COALESCE(SUM(dtr.rop_payout), 0) as rop_payout,
                 COALESCE(SUM(dtr.mortgage_deduction), 0) as mortgage_deduction,
-                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses
+                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses,
+                COUNT(*) as deal_count
                FROM deal_table_rows dtr
                ${isGlobal ? '' : 'LEFT JOIN profiles p ON dtr.agent_name = p.full_name'}
                WHERE ${isGlobal ? '' : '(dtr.branch_id::TEXT = $1 OR p.branch_id::TEXT = $2) AND '}${yearMonthFilter}
@@ -904,7 +909,8 @@ class KpiService {
                 COALESCE(SUM(dtr.mop_revenue), 0) as mop_revenue,
                 COALESCE(SUM(dtr.rop_payout), 0) as rop_payout,
                 COALESCE(SUM(dtr.mortgage_deduction), 0) as mortgage_deduction,
-                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses
+                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses,
+                COUNT(*) as deal_count
                FROM deal_table_rows dtr
                ${isGlobal ? '' : 'LEFT JOIN profiles p ON dtr.agent_name = p.full_name'}
                WHERE ${isGlobal ? '' : '(dtr.branch_id = ? OR p.branch_id = ?) AND '}${yearMonthFilter}
@@ -912,7 +918,7 @@ class KpiService {
 
         const revenueParams = isGlobal ? [] : [branchId || null, branchId || null];
 
-        let mopRevenue = 0, ropPayout = 0, mortgageDeduction = 0, otherExpenses = 0;
+        let mopRevenue = 0, ropPayout = 0, mortgageDeduction = 0, otherExpenses = 0, branchDealsCount = 0;
         if (pool) {
             const revRes = await query(revenueSql, revenueParams);
             const row = revRes.rows[0] || {};
@@ -921,6 +927,7 @@ class KpiService {
             ropPayout = parseFloat(row.rop_payout) || 0;
             mortgageDeduction = parseFloat(row.mortgage_deduction) || 0;
             otherExpenses = parseFloat(row.other_expenses) || 0;
+            branchDealsCount = parseInt(row.deal_count) || 0;
         } else {
             const revRow = db.prepare(revenueSql).get(...revenueParams);
             totalRevenue = parseFloat(revRow?.revenue) || 0;
@@ -928,6 +935,7 @@ class KpiService {
             ropPayout = parseFloat(revRow?.rop_payout) || 0;
             mortgageDeduction = parseFloat(revRow?.mortgage_deduction) || 0;
             otherExpenses = parseFloat(revRow?.other_expenses) || 0;
+            branchDealsCount = parseInt(revRow?.deal_count) || 0;
         }
 
         // Get plan targets
@@ -2061,7 +2069,8 @@ class KpiService {
                 COALESCE(SUM(dtr.mop_revenue), 0) as mop_revenue,
                 COALESCE(SUM(dtr.rop_payout), 0) as rop_payout,
                 COALESCE(SUM(dtr.mortgage_deduction), 0) as mortgage_deduction,
-                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses
+                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses,
+                COUNT(*) as deal_count
                FROM deal_table_rows dtr
                WHERE (dtr.agent_id::TEXT = $1 
                       OR dtr.mop_id::TEXT = $1
@@ -2075,7 +2084,8 @@ class KpiService {
                 COALESCE(SUM(CASE WHEN dtr.mop_id = ? OR LOWER(TRIM(dtr.mop_name)) IN (${names.map(() => '?').join(',')}) THEN dtr.mop_revenue ELSE 0 END), 0) as mop_revenue,
                 COALESCE(SUM(CASE WHEN dtr.rop_id = ? THEN dtr.rop_payout ELSE 0 END), 0) as rop_payout,
                 COALESCE(SUM(CASE WHEN dtr.agent_id = ? THEN dtr.mortgage_deduction ELSE 0 END), 0) as mortgage_deduction,
-                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses
+                COALESCE(SUM(dtr.other_expenses), 0) as other_expenses,
+                COUNT(*) as deal_count
                FROM deal_table_rows dtr
                WHERE (dtr.agent_id = ? 
                       OR dtr.mop_id = ?
@@ -2105,7 +2115,8 @@ class KpiService {
             mop_revenue: parseFloat(row.mop_revenue) || 0,
             rop_payout: parseFloat(row.rop_payout) || 0,
             mortgage_deduction: parseFloat(row.mortgage_deduction) || 0,
-            other_expenses: parseFloat(row.other_expenses) || 0
+            other_expenses: parseFloat(row.other_expenses) || 0,
+            deal_count: parseInt(row.deal_count) || 0
         };
     }
 }

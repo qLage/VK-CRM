@@ -144,7 +144,7 @@ class RealtorKpiCalculator extends BaseKpiCalculator {
     };
 
     const planDeals = Number(planRow?.target_deals || 0);
-    const dealsCount = Number(actions.deals || 0);
+    const dealsCount = deals.length;
 
     // Delegate calculation to pure function (deal rows still drive tier curve shape where needed)
     const metrics = calculateRealtorKPI({
