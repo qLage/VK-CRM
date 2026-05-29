@@ -110,6 +110,7 @@ export function SalarySchedule() {
             branch_id: s.branch_id,
             team_id: s.team_id,
             personal_income: (s.personal_income || 0) + mortgageAgent + mortgageBroker,
+            finance_personal_bonus: s.finance_personal_bonus || 0,
             mortgage_income,
             mortgage_agent_income: mortgageAgent,
             mortgage_broker_income: mortgageBroker,

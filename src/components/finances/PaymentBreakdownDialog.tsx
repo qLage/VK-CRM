@@ -28,6 +28,7 @@ interface PaymentBreakdownDialogProps {
     full_name: string;
     base_salary: number;
     personal_income: number;
+    finance_personal_bonus?: number;
     mortgage_income?: number;
     mortgage_agent_income?: number;
     mortgage_broker_income?: number;
@@ -101,12 +102,20 @@ export function PaymentBreakdownDialog({
 
     const personalIncomeTotal = employee.personal_income || 0;
 
-    if (personalIncomeTotal > 0) {
+    // Always show personal income (even 0) so user sees what is credited
+    initialComponents.push({
+      id: 'personal_income',
+      label: 'Личный доход',
+      amount: personalIncomeTotal,
+      color: 'text-emerald-400'
+    });
+
+    if (employee.finance_personal_bonus > 0) {
       initialComponents.push({
-        id: 'personal_income',
-        label: 'Личный доход',
-        amount: personalIncomeTotal,
-        color: 'text-emerald-400'
+        id: 'finance_personal_bonus',
+        label: 'Ручные начисления / бонусы',
+        amount: employee.finance_personal_bonus,
+        color: 'text-amber-400',
       });
     }
 
@@ -125,22 +134,6 @@ export function PaymentBreakdownDialog({
         label: 'РОП / филиал',
         amount: employee.department_revenue,
         color: 'text-purple-400',
-      });
-    }
-
-    // Add commission as fallback if no other income components
-    if (
-      employee.commission > 0 &&
-      employee.personal_income === 0 &&
-      mortgageTotal === 0 &&
-      employee.team_revenue === 0 &&
-      employee.department_revenue === 0
-    ) {
-      initialComponents.push({
-        id: 'commission',
-        label: 'Комиссия',
-        amount: employee.commission,
-        color: 'text-emerald-400'
       });
     }
 
