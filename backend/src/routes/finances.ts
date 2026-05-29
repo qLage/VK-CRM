@@ -826,19 +826,21 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
 
         for (const emp of Array.from(empRowsByProfile.values()).map((rows) => pickPreferredPayrollRoleRow(rows)) as any[]) {
             // 1. Personal income (from deals where this person is the agent)
+            // Fallback: if agent_id is NULL, credit to created_by (the person who created the deal)
             const personalRes = await query(`
                 SELECT 
                     COALESCE(SUM(agent_income), 0) as income,
                     COALESCE(SUM(commission_total_fact), 0) as revenue
                 FROM deal_table_rows
-                WHERE (agent_id = $1 OR agent_name = $2 OR agent_id IS NULL)
+                WHERE (
+                    agent_id = $1 
+                    OR agent_name = $2
+                    OR (agent_id IS NULL AND created_by = $1)
+                )
+                  AND deal_date >= $3 AND deal_date < $4
                   AND status IN ('approved', 'active')
-            `, [emp.id, emp.full_name]);
-            const personalResAll = await query(`
-                SELECT COALESCE(SUM(agent_income), 0) as income
-                FROM deal_table_rows WHERE status IN ('approved', 'active')
-            `);
-            console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal:`, personalRes.rows[0], 'all agents:', personalResAll.rows[0]);
+            `, [emp.id, emp.full_name, start, end]);
+            console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal:`, personalRes.rows[0]);
 
             const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
             const personalRevenueRaw = parseFloat(personalRes.rows[0]?.revenue) || 0;
