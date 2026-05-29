@@ -432,7 +432,7 @@ router.post('/', authenticateToken, [
             pets_allowed, children_allowed, prepayment, deposit_amount, lease_term, tenant_requirements,
             infrastructure, transport_accessibility,
             object_type, bathroom_location, smoking_allowed, apartment_type,
-            client_id, utility_details
+            client_id, utility_details, source_type
         } = req.body;
         const now = new Date().toISOString();
 
@@ -453,7 +453,7 @@ router.post('/', authenticateToken, [
                 pets_allowed, children_allowed, prepayment, deposit_amount, lease_term, tenant_requirements,
                 infrastructure, transport_accessibility,
                 object_type, bathroom_location, smoking_allowed, apartment_type,
-                client_id, utility_details,
+                client_id, utility_details, source_type,
                 status, created_at, updated_at
             )
             VALUES (
@@ -465,7 +465,8 @@ router.post('/', authenticateToken, [
                 $53,$54,$55,$56,$57,$58,
                 $59,
                 $60,
-                $61,$62,$63
+                $61,
+                $62,$63,$64
             )
         `, [
             id, user.company_id, user.id, user.branch_id, user.team_id,
@@ -481,6 +482,7 @@ router.post('/', authenticateToken, [
             object_type || null, bathroom_location || null, smoking_allowed || null, apartment_type || null,
             client_id || null,
             utility_details || null,
+            source_type || 'client',
             'draft', now, now
         ]);
 
@@ -552,7 +554,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response): Promi
             pets_allowed, children_allowed, prepayment, deposit_amount, lease_term, tenant_requirements,
             infrastructure, transport_accessibility,
             object_type, bathroom_location, smoking_allowed, apartment_type,
-            client_id, utility_details
+            client_id, utility_details, source_type
         } = req.body;
         const now = new Date().toISOString();
 
@@ -595,8 +597,9 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response): Promi
                 object_type=COALESCE($50,object_type), bathroom_location=COALESCE($51,bathroom_location), smoking_allowed=COALESCE($52,smoking_allowed), apartment_type=COALESCE($53,apartment_type),
                 client_id=COALESCE($54,client_id),
                 utility_details=COALESCE($55,utility_details),
-                updated_at=$56 ${statusUpdate}
-            WHERE id=$57
+                source_type=COALESCE($56,source_type),
+                updated_at=$57 ${statusUpdate}
+            WHERE id=$58
         `, [
             category, city, address, lat, lng, price,
             area_total, area_living, area_kitchen, rooms, floor, floors_total, description,
@@ -609,6 +612,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response): Promi
             object_type, bathroom_location, smoking_allowed, apartment_type,
             client_id || null,
             utility_details || null,
+            source_type || null,
             now, propId
         ]);
 

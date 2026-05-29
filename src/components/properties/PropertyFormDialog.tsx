@@ -65,6 +65,43 @@ const CATEGORIES = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   SOURCE TYPE TOGGLE (client / lead / external)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+type PropertySourceType = 'client' | 'lead' | 'external';
+
+function SourceTypeToggle({
+  value,
+  onChange,
+}: {
+  value: PropertySourceType;
+  onChange: (next: PropertySourceType) => void;
+}) {
+  const cell = (m: PropertySourceType, label: string) => (
+    <button
+      key={m}
+      type="button"
+      onClick={() => onChange(m)}
+      className={cn(
+        'flex-1 min-w-0 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors',
+        value === m
+          ? 'bg-primary text-white'
+          : 'text-white/45 hover:text-white/80 hover:bg-white/5'
+      )}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex w-full rounded-xl border border-white/10 p-1 bg-black/20 gap-1">
+      {cell('client', 'Клиент')}
+      {cell('lead', 'Лид')}
+      {cell('external', 'Внешний')}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    SELECT OPTIONS
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -959,6 +996,7 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
   const [clientSearch, setClientSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<{ id: string; full_name: string; phone: string } | null>(null);
   const [newClientData, setNewClientData] = useState<{ full_name: string; phone: string; birthday?: string; comment?: string } | null>(null);
+  const [sourceType, setSourceType] = useState<PropertySourceType>('client');
   const setFormField = useCallback((key: string, value: any) => setForm((f) => ({ ...f, [key]: value })), []);
 
   // Dirty-check state
@@ -1011,6 +1049,7 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
       }
       setNewClientData(null);
       setClientSearch('');
+      setSourceType((initialData as any)?.source_type || 'client');
 
       const initialClientId = (initialData as any)?.client_id || nextForm.client_id;
       const initialClient = initialClientId
@@ -1035,7 +1074,8 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
         form: nextForm,
         photos: initialPhotos,
         client: initialClient,
-        newClient: null
+        newClient: null,
+        sourceType: (initialData as any)?.source_type || 'client'
       }));
     }
     wasOpenRef.current = open;
@@ -1176,7 +1216,7 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
     if (!isValid || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     try {
-      const formData = { ...form };
+      const formData = { ...form, source_type: sourceType };
       if (formData.renovation === 'without') {
         formData.renovation = 'requires';
       }
@@ -1816,6 +1856,7 @@ export function PropertyFormDialog({ open, onOpenChange, onSubmit, isPending, in
             {!clientAccessCheck?.restricted && (
               <div id="section-client" className="space-y-4 pt-4 border-t border-white/5">
                 <SectionHeader icon={UserRound} color="violet" label="Клиент *" />
+                <SourceTypeToggle value={sourceType} onChange={setSourceType} />
                 
                 {selectedClient ? (
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">

@@ -1299,25 +1299,28 @@ class KpiService {
                 }
             });
 
-            // 2.5. Override "Набор базы" with current count of properties in sale
-            //      per user (status: approved / on Avito / in feed). This replaces
-            //      the legacy service_requests + daily report aggregation so the
-            //      rating reflects the live properties pipeline.
+            // 2.5. Override "Набор базы" with count of properties created in period
+            //      (status: approved / on Avito / in feed), excluding lead-sourced objects.
             try {
                 const propsQuery = pool ? `
                     SELECT owner_id::TEXT as user_id, COUNT(*)::int as cnt
                     FROM properties
                     WHERE owner_id = ANY($1::TEXT[])
+                      AND created_at BETWEEN $2 AND $3
                       AND status IN ('approved', 'avito_approved', 'published_avito', 'in_feed')
+                      AND (source_type IS NULL OR source_type <> 'lead')
                     GROUP BY owner_id
                 ` : `
                     SELECT owner_id as user_id, COUNT(*) as cnt
                     FROM properties
                     WHERE owner_id IN (${userIds.map(() => '?').join(',')})
+                      AND created_at BETWEEN ? AND ?
                       AND status IN ('approved', 'avito_approved', 'published_avito', 'in_feed')
+                      AND (source_type IS NULL OR source_type <> 'lead')
                     GROUP BY owner_id
                 `;
-                const propsRes = await query(propsQuery, pool ? [userIds] : [...userIds]);
+                const propsParams = pool ? [userIds, start, endDate] : [...userIds, start, endDate];
+                const propsRes = await query(propsQuery, propsParams);
                 propsRes.rows.forEach(r => {
                     const p = profileMap.get(r.user_id);
                     if (p) p.takes = parseInt(r.cnt) || 0;

@@ -54,6 +54,7 @@ export interface Property {
   archived_at: string | null;
   auto_delete_at: string | null;
   deal_id: string | null;
+  source_type: string | null;
   created_at: string;
   updated_at: string;
   // Joined
@@ -142,6 +143,7 @@ export interface PropertyCreate {
   gas_supply?: string;
   built_year?: number;
   client_id?: string;
+  source_type?: 'client' | 'lead' | 'external';
   // Avito rent fields
   furniture?: string;
   appliances?: string;

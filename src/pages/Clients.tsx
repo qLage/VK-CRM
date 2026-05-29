@@ -158,6 +158,40 @@ export default function Clients() {
           )}
         </div>
 
+        {/* ── MY / BRANCH TOGGLE ── */}
+        {(accessLevel >= 50 || (accessLevel < 50 && user?.team_id)) && (
+          <div className="flex gap-1 p-1 bg-zinc-900/60 border border-white/10 rounded-xl w-fit">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setMyClientsOnly(true); setPage(1); }}
+              className={cn(
+                'gap-2 transition-all text-xs font-bold uppercase rounded-lg',
+                myClientsOnly
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'text-white/60 hover:text-white hover:bg-white/5'
+              )}
+            >
+              <User className="h-4 w-4" />
+              Мои
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setMyClientsOnly(false); setPage(1); }}
+              className={cn(
+                'gap-2 transition-all text-xs font-bold uppercase rounded-lg',
+                !myClientsOnly
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'text-white/60 hover:text-white hover:bg-white/5'
+              )}
+            >
+              <Users className="h-4 w-4" />
+              Филиал
+            </Button>
+          </div>
+        )}
+
         {/* ── BENTO STATS ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
           {[
@@ -203,38 +237,6 @@ export default function Clients() {
         {/* ── HEADER ACTIONS (Search + Filters + Create) ── */}
         <div className="flex flex-col md:flex-row gap-3 md:gap-4 items-stretch md:items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3 flex-1 max-w-2xl">
-            {(accessLevel >= 50 || (accessLevel < 50 && user?.team_id)) && (
-              <div className="flex gap-1 p-0.5 bg-zinc-900/60 border border-white/10 rounded-lg shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setMyClientsOnly(true); setPage(1); }}
-                  className={cn(
-                    'gap-1.5 h-9 px-2.5 md:px-3 transition-all text-[10px] font-bold uppercase',
-                    myClientsOnly
-                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                      : 'text-white/60 hover:text-white hover:bg-white/5'
-                  )}
-                >
-                  <User className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Мои</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setMyClientsOnly(false); setPage(1); }}
-                  className={cn(
-                    'gap-1.5 h-9 px-2.5 md:px-3 transition-all text-[10px] font-bold uppercase',
-                    !myClientsOnly
-                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                      : 'text-white/60 hover:text-white hover:bg-white/5'
-                  )}
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Филиал</span>
-                </Button>
-              </div>
-            )}
             <div className="flex-1 relative">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 z-0 h-4 w-4 -translate-y-1/2 text-white/30" aria-hidden />
               <Input
