@@ -1135,6 +1135,83 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
     }
 });
 
+// Debug endpoint to diagnose salary calculation for a specific user
+router.get('/salaries/debug-calc', authenticateToken, requirePermission('can_view_finances'), async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { user_id, month, year } = req.query;
+        const companyId = (req.user as any)?.company_id as string | undefined;
+
+        if (!user_id || !month || !year) {
+            res.status(400).json({ error: { message: 'user_id, month, and year are required' } });
+            return;
+        }
+
+        const periodYear = parseInt(year as string);
+        const periodMonth = parseInt(month as string);
+        const { start, end } = periodBounds(periodYear, periodMonth);
+
+        // Employee info
+        const empRes = await query(`
+            SELECT p.id, p.full_name, ur.role, pos.name as position_name
+            FROM profiles p
+            LEFT JOIN user_roles ur ON p.id = ur.user_id
+            LEFT JOIN positions pos ON p.position_id = pos.id
+            WHERE p.id = $1
+        `, [user_id]);
+        const emp = empRes.rows[0];
+
+        // All deals for this period with non-zero agent_income
+        const allDealsRes = await query(`
+            SELECT id, property_name, agent_id, agent_name, agent_income, commission_total_fact, status,
+                   deal_date, payment_date, deposit_date, created_by
+            FROM deal_table_rows
+            WHERE deal_date >= $1 AND deal_date < $2
+              AND status IN ('approved', 'active')
+            ORDER BY agent_income DESC
+            LIMIT 50
+        `, [start, end]);
+
+        // Filtered by this employee
+        const filteredRes = await query(`
+            SELECT COALESCE(SUM(agent_income), 0) as income, COUNT(*) as cnt
+            FROM deal_table_rows
+            WHERE (agent_id = $1 OR agent_name = $2)
+              AND deal_date >= $3 AND deal_date < $4
+              AND status IN ('approved', 'active')
+        `, [user_id, emp?.full_name || '', start, end]);
+
+        // Unfiltered
+        const unfilteredRes = await query(`
+            SELECT COALESCE(SUM(agent_income), 0) as income, COUNT(*) as cnt
+            FROM deal_table_rows
+            WHERE deal_date >= $1 AND deal_date < $2
+              AND status IN ('approved', 'active')
+        `, [start, end]);
+
+        // agent_id is NULL count
+        const nullAgentRes = await query(`
+            SELECT COALESCE(SUM(agent_income), 0) as income, COUNT(*) as cnt
+            FROM deal_table_rows
+            WHERE agent_id IS NULL
+              AND deal_date >= $1 AND deal_date < $2
+              AND status IN ('approved', 'active')
+        `, [start, end]);
+
+        res.json({
+            user_id,
+            emp,
+            period: { start, end },
+            all_deals_sample: allDealsRes.rows,
+            filtered: filteredRes.rows[0],
+            unfiltered: unfilteredRes.rows[0],
+            null_agent: nullAgentRes.rows[0],
+        });
+    } catch (error) {
+        console.error('Debug salary calc error:', error);
+        res.status(500).json({ error: { message: 'Server error' } });
+    }
+});
+
 // Get paid salary components for an employee in a specific period
 router.get('/salaries/paid-components', authenticateToken, requirePermission('can_view_finances'), async (req: Request, res: Response): Promise<void> => {
     try {
