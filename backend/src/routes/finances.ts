@@ -962,6 +962,11 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                         departmentBonus +
                         mortgageAgentIncome +
                         mortgageBrokerIncome,
+                    // DEBUG
+                    _debug_personal_sql_income: personalRes.rows[0]?.income,
+                    _debug_personal_sql_revenue: personalRes.rows[0]?.revenue,
+                    _debug_period_start: pStart,
+                    _debug_period_end: pEnd,
                 });
             }
         }
