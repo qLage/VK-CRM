@@ -43,6 +43,8 @@ jobs:
           port: ${{ secrets.SSH_PORT || '22' }}
           script: |
             rm -f /root/CRM/deploy.tar.gz
+            docker system prune -af
+            docker image prune -af
             df -h /
 
       - name: Upload archive to server
