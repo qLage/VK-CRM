@@ -832,10 +832,9 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                     COALESCE(SUM(commission_total_fact), 0) as revenue
                 FROM deal_table_rows
                 WHERE (agent_id = $1 OR agent_name = $2)
-                  AND ${DEAL_DATE_SQL} >= $3 AND ${DEAL_DATE_SQL} < $4
                   AND status IN ('approved', 'active')
-            `, [emp.id, emp.full_name, pStart, pEnd]);
-            console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal income:`, personalRes.rows[0]);
+            `, [emp.id, emp.full_name]);
+            console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal income ALL TIME:`, personalRes.rows[0]);
 
             const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
             const personalRevenueRaw = parseFloat(personalRes.rows[0]?.revenue) || 0;
