@@ -837,7 +837,7 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                     OR agent_name = $2
                     OR (agent_id IS NULL AND created_by = $1)
                 )
-                  AND deal_date >= $3 AND deal_date < $4
+                  AND ${DEAL_DATE_SQL} >= $3 AND ${DEAL_DATE_SQL} < $4
                   AND status IN ('approved', 'active')
             `, [emp.id, emp.full_name, pStart, pEnd]);
             console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal:`, personalRes.rows[0]);
