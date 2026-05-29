@@ -97,7 +97,7 @@ export function PaymentBreakdownDialog({
         ? employee.mortgage_income!
         : (employee.mortgage_agent_income ?? 0) + (employee.mortgage_broker_income ?? 0);
 
-    const personalIncomeTotal = (employee.personal_income || 0) + mortgageTotal;
+    const personalIncomeTotal = employee.personal_income || 0;
 
     if (personalIncomeTotal > 0) {
       initialComponents.push({
