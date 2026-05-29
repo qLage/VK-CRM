@@ -1774,39 +1774,38 @@ router.post('/recalculate', authenticateToken, requirePermission('can_manage_fin
         let updatedCount = 0;
 
         for (const p of periods) {
+            const { start: rStart, end: rEnd } = periodBounds(p.year, p.month);
             try {
                 await query(`
-                    const { start: rStart, end: rEnd } = periodBounds(p.year, p.month);
-                    await query(`
-                        UPDATE deal_table_rows dtr
-                        SET
-                            commission_seller_fact = COALESCE(NULLIF(dc.commission_seller_fact, 0), dtr.commission_seller_fact),
-                            commission_buyer_fact = COALESCE(NULLIF(dc.commission_buyer_fact, 0), dtr.commission_buyer_fact),
-                            agent_percent_seller = CASE
-                                WHEN COALESCE(dtr.agent_percent_seller, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_seller, 0), 50)
-                                ELSE dtr.agent_percent_seller
-                            END,
-                            agent_percent_buyer = CASE
-                                WHEN COALESCE(dtr.agent_percent_buyer, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_buyer, 0), 50)
-                                ELSE dtr.agent_percent_buyer
-                            END,
-                            updated_at = $3
-                        FROM deals d
-                        JOIN deal_commissions dc ON dc.deal_id = d.id
-                        LEFT JOIN deal_participants dp ON dp.deal_id = d.id AND dp.role IN ('realtor', 'agent')
-                        LEFT JOIN profiles p ON p.id = dp.employee_id
-                        WHERE dtr.deal_date >= $1 AND dtr.deal_date < $2
-                          AND d.period_year = ${p.year}
-                          AND d.period_month = ${p.month}
-                          AND LOWER(TRIM(d.property_object)) = LOWER(TRIM(dtr.property_name))
-                          AND (
-                            p.full_name IS NULL
-                            OR LOWER(TRIM(p.full_name)) = LOWER(TRIM(dtr.agent_name))
-                          )
-                          AND COALESCE(dtr.commission_seller_fact, 0) = 0
-                          AND COALESCE(dtr.commission_buyer_fact, 0) = 0
-                          AND COALESCE(dtr.commission_total_fact, 0) = 0
-                    `, [rStart, rEnd, new Date().toISOString()]);
+                    UPDATE deal_table_rows dtr
+                    SET
+                        commission_seller_fact = COALESCE(NULLIF(dc.commission_seller_fact, 0), dtr.commission_seller_fact),
+                        commission_buyer_fact = COALESCE(NULLIF(dc.commission_buyer_fact, 0), dtr.commission_buyer_fact),
+                        agent_percent_seller = CASE
+                            WHEN COALESCE(dtr.agent_percent_seller, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_seller, 0), 50)
+                            ELSE dtr.agent_percent_seller
+                        END,
+                        agent_percent_buyer = CASE
+                            WHEN COALESCE(dtr.agent_percent_buyer, 0) = 0 THEN COALESCE(NULLIF(dc.agent_percent_buyer, 0), 50)
+                            ELSE dtr.agent_percent_buyer
+                        END,
+                        updated_at = $3
+                    FROM deals d
+                    JOIN deal_commissions dc ON dc.deal_id = d.id
+                    LEFT JOIN deal_participants dp ON dp.deal_id = d.id AND dp.role IN ('realtor', 'agent')
+                    LEFT JOIN profiles p ON p.id = dp.employee_id
+                    WHERE dtr.deal_date >= $1 AND dtr.deal_date < $2
+                      AND d.period_year = ${p.year}
+                      AND d.period_month = ${p.month}
+                      AND LOWER(TRIM(d.property_object)) = LOWER(TRIM(dtr.property_name))
+                      AND (
+                        p.full_name IS NULL
+                        OR LOWER(TRIM(p.full_name)) = LOWER(TRIM(dtr.agent_name))
+                      )
+                      AND COALESCE(dtr.commission_seller_fact, 0) = 0
+                      AND COALESCE(dtr.commission_buyer_fact, 0) = 0
+                      AND COALESCE(dtr.commission_total_fact, 0) = 0
+                `, [rStart, rEnd, new Date().toISOString()]);
             } catch (e) {
                 // Optional backfill
             }
