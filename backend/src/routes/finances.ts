@@ -804,17 +804,15 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
         const salaries: any[] = [];
 
         for (const emp of Array.from(empRowsByProfile.values()).map((rows) => pickPreferredPayrollRoleRow(rows)) as any[]) {
-            // 1. Personal income (from paid transactions to this employee)
+            // 1. Personal income (from deals where this person is the agent)
             const personalRes = await query(`
                 SELECT 
-                    COALESCE(SUM(amount), 0) as income,
-                    COALESCE(SUM(amount), 0) as revenue
-                FROM transactions
-                WHERE user_id = $1
-                  AND type = 'expense'
-                  AND EXTRACT(YEAR FROM created_at) = $2
-                  AND EXTRACT(MONTH FROM created_at) = $3
-            `, [emp.id, periodYear, periodMonth]);
+                    COALESCE(SUM(agent_income), 0) as income,
+                    COALESCE(SUM(commission_total_fact), 0) as revenue
+                FROM deal_table_rows
+                WHERE (agent_id = $1 OR agent_name = $2) AND year = $3 AND month = $4
+                  AND status IN ('approved', 'active')
+            `, [emp.id, emp.full_name, periodYear, periodMonth]);
 
             const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
             const personalRevenueRaw = parseFloat(personalRes.rows[0]?.revenue) || 0;
@@ -972,16 +970,14 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
         const companyId = (req.user as any)?.company_id as string | undefined;
         const payrollOrg = companyId ? await getPayrollOrgSettings(companyId) : DEFAULT_PAYROLL_ORG_SETTINGS;
 
-        // Personal income (from paid transactions to this employee)
+        // Personal income (from deals where this person is the agent)
         const personalRes = await query(`
             SELECT
-                COALESCE(SUM(amount), 0) as income,
-                COALESCE(SUM(amount), 0) as revenue
-            FROM transactions
-            WHERE user_id = $1
-              AND type = 'expense'
-              AND EXTRACT(YEAR FROM created_at) = $2
-              AND EXTRACT(MONTH FROM created_at) = ANY($3)
+                COALESCE(SUM(agent_income), 0) as income,
+                COALESCE(SUM(commission_total_fact), 0) as revenue
+            FROM deal_table_rows
+            WHERE (agent_id = $1) AND year = $2 AND month = ANY($3)
+              AND status IN ('approved', 'active')
         `, [userId, periodYear, periodMonths]);
 
         const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
@@ -2012,10 +2008,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
               AND year = $3 AND month = $4
               AND status IN ('approved', 'active')
               AND company_id = $5
-              AND payment_date IS NOT NULL
-              AND payment_date <> ''
-              AND payment_date::date <= (NOW() AT TIME ZONE 'Europe/Moscow')::date
-            ORDER BY payment_date DESC
+            ORDER BY payment_date DESC NULLS LAST
         `, [userId, profileName, periodYear, periodMonth, companyId, 'agent']);
 
         // 2. Deals where user is subcontractor
