@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Wallet, Users, Building2, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -45,9 +46,9 @@ export function SalarySchedule() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const salaryPeriod = new Date();
-  const salaryYear = salaryPeriod.getFullYear();
-  const salaryMonth = salaryPeriod.getMonth() + 1;
+  const now = new Date();
+  const [salaryYear, setSalaryYear] = useState(now.getFullYear());
+  const [salaryMonth, setSalaryMonth] = useState(now.getMonth() + 1);
   const [navigationPath, setNavigationPath] = useState<BreadcrumbItem[]>([
     { label: 'Все филиалы', level: 'company' }
   ]);
@@ -349,14 +350,40 @@ export function SalarySchedule() {
     );
   }
 
-  const currentMonthName = format(new Date(), 'LLLL', { locale: ru });
+  const currentMonthName = format(new Date(salaryYear, salaryMonth - 1, 1), 'LLLL', { locale: ru });
 
   return (
     <div className="space-y-4 md:space-y-8 animate-fade-in">
-      <div className="mb-3 md:mb-6">
+      <div className="mb-3 md:mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h2 className="text-lg md:text-2xl font-bold text-white">Зарплаты за {currentMonthName}</h2>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">Автоматический расчет на основе сделок</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={String(salaryMonth)} onValueChange={(v) => setSalaryMonth(Number(v))}>
+            <SelectTrigger className="w-[130px] bg-zinc-900 border-white/10 text-white">
+              <SelectValue placeholder="Месяц" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-white/10">
+              {Array.from({ length: 12 }, (_, i) => (
+                <SelectItem key={i + 1} value={String(i + 1)} className="text-white focus:bg-white/10">
+                  {format(new Date(2024, i, 1), 'LLLL', { locale: ru })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={String(salaryYear)} onValueChange={(v) => setSalaryYear(Number(v))}>
+            <SelectTrigger className="w-[100px] bg-zinc-900 border-white/10 text-white">
+              <SelectValue placeholder="Год" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 border-white/10">
+              {[2024, 2025, 2026, 2027].map((y) => (
+                <SelectItem key={y} value={String(y)} className="text-white focus:bg-white/10">
+                  {y}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
