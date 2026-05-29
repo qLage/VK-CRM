@@ -1235,6 +1235,23 @@ async function purgeData(): Promise<void> {
     await query(`ALTER TABLE properties ADD COLUMN IF NOT EXISTS external_name TEXT`).catch(() => {});
     await query(`CREATE INDEX IF NOT EXISTS idx_properties_source_type ON properties(source_type)`).catch(() => {});
     await query(`CREATE INDEX IF NOT EXISTS idx_properties_lead_id ON properties(lead_id)`).catch(() => {});
+
+    // --- Fix deal_table_rows missing agent_id / agent_name (caused by edit-dialog bug) ---
+    // If agent_id is NULL, fallback to created_by (the user who created the deal)
+    await query(`
+        UPDATE deal_table_rows
+        SET agent_id = created_by
+        WHERE agent_id IS NULL AND created_by IS NOT NULL
+    `).catch(() => {});
+    // Sync agent_name from profiles for rows with agent_id but empty agent_name
+    await query(`
+        UPDATE deal_table_rows dtr
+        SET agent_name = COALESCE(p.full_name, '')
+        FROM profiles p
+        WHERE dtr.agent_id = p.id
+          AND COALESCE(TRIM(dtr.agent_name), '') = ''
+          AND COALESCE(TRIM(p.full_name), '') <> ''
+    `).catch(() => {});
 }
 
 async function runConsolidatedMigrations(): Promise<void> {

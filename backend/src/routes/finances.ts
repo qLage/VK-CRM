@@ -822,6 +822,8 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
 
         const { start: pStart, end: pEnd } = periodBounds(periodYear, periodMonth);
 
+        const DEAL_DATE_SQL = `COALESCE(NULLIF(deal_date, ''), NULLIF(payment_date, ''), NULLIF(deposit_date, ''))`;
+
         for (const emp of Array.from(empRowsByProfile.values()).map((rows) => pickPreferredPayrollRoleRow(rows)) as any[]) {
             // 1. Personal income (from deals where this person is the agent)
             const personalRes = await query(`
@@ -830,7 +832,7 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                     COALESCE(SUM(commission_total_fact), 0) as revenue
                 FROM deal_table_rows
                 WHERE (agent_id = $1 OR agent_name = $2)
-                  AND deal_date >= $3 AND deal_date < $4
+                  AND ${DEAL_DATE_SQL} >= $3 AND ${DEAL_DATE_SQL} < $4
                   AND status IN ('approved', 'active')
             `, [emp.id, emp.full_name, pStart, pEnd]);
 
@@ -843,7 +845,7 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                 SELECT COALESCE(SUM(mop_revenue), 0) as total
                 FROM deal_table_rows
                 WHERE (mop_id = $1 OR mop_name = $2)
-                  AND deal_date >= $3 AND deal_date < $4
+                  AND ${DEAL_DATE_SQL} >= $3 AND ${DEAL_DATE_SQL} < $4
                   AND status IN ('approved', 'active')
                   AND payment_date IS NOT NULL
                   AND payment_date <> ''
@@ -856,7 +858,7 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                 SELECT COALESCE(SUM(rop_payout), 0) as total
                 FROM deal_table_rows
                 WHERE (rop_id = $1 OR rop_name = $2)
-                  AND deal_date >= $3 AND deal_date < $4
+                  AND ${DEAL_DATE_SQL} >= $3 AND ${DEAL_DATE_SQL} < $4
                   AND status IN ('approved', 'active')
                   AND payment_date IS NOT NULL
                   AND payment_date <> ''
@@ -1008,12 +1010,14 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
         const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
         const personalRevenueRaw = parseFloat(personalRes.rows[0]?.revenue) || 0;
 
+        const DEAL_DATE_SQL_ME = `COALESCE(NULLIF(deal_date, ''), NULLIF(payment_date, ''), NULLIF(deposit_date, ''))`;
+
         // Manager Bonuses (MOP/ROP/Mortgage Broker)
         const mopBonusRes = await query(`
             SELECT COALESCE(SUM(mop_revenue), 0) as total
             FROM deal_table_rows
             WHERE (mop_id = $1)
-              AND deal_date >= $2 AND deal_date < $3
+              AND ${DEAL_DATE_SQL_ME} >= $2 AND ${DEAL_DATE_SQL_ME} < $3
               AND status IN ('approved', 'active')
               AND payment_date IS NOT NULL
               AND payment_date <> ''
@@ -1025,7 +1029,7 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
             SELECT COALESCE(SUM(rop_payout), 0) as total
             FROM deal_table_rows
             WHERE (rop_id = $1)
-              AND deal_date >= $2 AND deal_date < $3
+              AND ${DEAL_DATE_SQL_ME} >= $2 AND ${DEAL_DATE_SQL_ME} < $3
               AND status IN ('approved', 'active')
               AND payment_date IS NOT NULL
               AND payment_date <> ''
@@ -2013,6 +2017,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
         const periodMonth = month ? parseInt(month as string) : (new Date().getMonth() + 1);
         const roleFilter = role ? String(role) : 'agent';
         const { start: dStart, end: dEnd } = periodBounds(periodYear, periodMonth);
+        const DEAL_DATE_SQL_DEALS = `COALESCE(NULLIF(deal_date, ''), NULLIF(payment_date, ''), NULLIF(deposit_date, ''))`;
 
         const profileNameRes = await query(`SELECT full_name FROM profiles WHERE id = $1`, [userId]);
         const profileName = profileNameRes.rows[0]?.full_name || '';
@@ -2036,7 +2041,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                     subcontractor_amount
                 FROM deal_table_rows
                 WHERE (mop_id = $1 OR mop_name = $2)
-                  AND deal_date >= $3 AND deal_date < $4
+                  AND ${DEAL_DATE_SQL_DEALS} >= $3 AND ${DEAL_DATE_SQL_DEALS} < $4
                   AND status IN ('approved', 'active')
                   AND company_id = $5
                 ORDER BY payment_date DESC NULLS LAST
@@ -2068,7 +2073,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                     subcontractor_amount
                 FROM deal_table_rows
                 WHERE (rop_id = $1 OR rop_name = $2)
-                  AND deal_date >= $3 AND deal_date < $4
+                  AND ${DEAL_DATE_SQL_DEALS} >= $3 AND ${DEAL_DATE_SQL_DEALS} < $4
                   AND status IN ('approved', 'active')
                   AND company_id = $5
                 ORDER BY payment_date DESC NULLS LAST
@@ -2100,7 +2105,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                 subcontractor_amount
             FROM deal_table_rows
             WHERE (agent_id = $1 OR agent_name = $2)
-              AND deal_date >= $3 AND deal_date < $4
+              AND ${DEAL_DATE_SQL_DEALS} >= $3 AND ${DEAL_DATE_SQL_DEALS} < $4
               AND status IN ('approved', 'active')
               AND company_id = $5
             ORDER BY payment_date DESC NULLS LAST
@@ -2125,7 +2130,7 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                 subcontractor_amount
             FROM deal_table_rows
             WHERE subcontractor_id = $1
-              AND deal_date >= $2 AND deal_date < $3
+              AND ${DEAL_DATE_SQL_DEALS} >= $2 AND ${DEAL_DATE_SQL_DEALS} < $3
               AND status IN ('approved', 'active')
               AND company_id = $4
               AND subcontractor_amount > 0
