@@ -89,14 +89,14 @@ export function PersonalIncomeDetailDialog({
   const unpaidCount = deals.filter((d: DealItem) => !paidIds.has(d.id)).length;
 
   const handleStartEdit = (deal: DealItem) => {
-    setEditingId(`${deal.id}-${deal.role_type}`);
+    setEditingId(`${deal.id}|${deal.role_type}`);
     setTempValue(String(getDealAmount(deal)));
   };
 
   const handleSaveEdit = () => {
     const num = Number(tempValue.replace(/\D/g, '')) || 0;
     if (editingId) {
-      const dealId = editingId.split('-')[0];
+      const dealId = editingId.split('|')[0];
       setEditedAmounts(prev => ({ ...prev, [dealId]: num }));
     }
     setEditingId(null);
@@ -190,7 +190,7 @@ export function PersonalIncomeDetailDialog({
           ) : (
             <div className="space-y-3 overflow-y-auto pr-1 flex-1">
               {deals.map((deal: DealItem, index: number) => {
-                const isEditing = editingId === `${deal.id}-${deal.role_type}`;
+                const isEditing = editingId === `${deal.id}|${deal.role_type}`;
                 const amount = getDealAmount(deal);
                 const isPaid = paidIds.has(`${deal.id}-${deal.role_type}`);
                 const dealKey = `${deal.id}-${deal.role_type}`;
