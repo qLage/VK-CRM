@@ -155,28 +155,13 @@ export function PaymentBreakdownDialog({
         ];
         labels.forEach(({ label, id }) => {
           if (tx.description.includes(`${label}:`)) {
+            paid.add(id);
             const amount = parseAmountFromDesc(tx.description, label);
             if (amount > 0) {
               paidAmounts[id] = (paidAmounts[id] || 0) + amount;
             }
           }
         });
-      });
-
-      const componentAmounts: Record<string, number> = {
-        base_salary: employee.base_salary,
-        personal_income: employee.personal_income,
-        mortgage_income: (employee.mortgage_income ?? 0),
-        team_revenue: employee.team_revenue,
-        department_revenue: employee.department_revenue,
-        commission: employee.commission,
-      };
-
-      Object.entries(paidAmounts).forEach(([id, paidAmt]) => {
-        const target = editedAmounts[id] ?? componentAmounts[id] ?? 0;
-        if (paidAmt >= target && target > 0) {
-          paid.add(id);
-        }
       });
 
       let okladAdvanceRecorded = false;
