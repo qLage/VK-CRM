@@ -844,13 +844,7 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
             `, [emp.id, emp.full_name, pStart, pEnd]);
             console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal:`, personalRes.rows[0]);
 
-            let financePersonalBonus = 0;
-            if (companyId) {
-                const rawPersonal = await sumManualPersonalForCalendarMonths(emp.id, companyId, periodYear, [periodMonth]);
-                financePersonalBonus = Math.round(rawPersonal || 0);
-            }
-
-            const personalIncomeSalary = Math.round((parseFloat(personalRes.rows[0]?.income) || 0) + financePersonalBonus);
+            const personalIncomeSalary = Math.round(parseFloat(personalRes.rows[0]?.income) || 0);
             const personalRevenueRaw = parseFloat(personalRes.rows[0]?.revenue) || 0;
 
             // 2. Manager Bonuses (MOP/ROP/Mortgage Broker)
@@ -954,7 +948,6 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                     department_revenue: departmentBonus,
                     mortgage_agent_income: mortgageAgentIncome,
                     mortgage_broker_income: mortgageBrokerIncome,
-                    finance_personal_bonus: financePersonalBonus,
                     // Backward compatibility / display
                     personal_income_raw: personalRevenueRaw,
                     total_salary: totalSalary,
@@ -1107,20 +1100,13 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
             mortgageBrokerIncome = Math.round(parseFloat(mortgageBrokerRes.rows[0]?.total) || 0);
         }
 
-        let financePersonalBonus = 0;
-        if (companyId) {
-            const rawPersonal = await sumManualPersonalForCalendarMonths(userId, companyId, periodYear, periodMonths);
-            financePersonalBonus = Math.round(rawPersonal || 0);
-        }
-
         const totalSalary =
             personalIncomeSalary +
             teamBonus +
             departmentBonus +
             baseSalaryAmount +
             mortgageAgentIncome +
-            mortgageBrokerIncome +
-            financePersonalBonus;
+            mortgageBrokerIncome;
 
         res.json({
             period_year: periodYear,
@@ -1133,7 +1119,6 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
             mortgage_agent_income: mortgageAgentIncome,
             mortgage_broker_income: mortgageBrokerIncome,
             personal_revenue_raw: personalRevenueRaw,
-            finance_personal_bonus: financePersonalBonus,
             total_salary: totalSalary,
             uses_official_payroll: usesOfficialPayrollSelf,
             payroll_scheme: usesOfficialPayrollSelf ? 'official' : 'flat',
@@ -1142,8 +1127,7 @@ router.get('/salaries/me', authenticateToken, async (req: Request, res: Response
                 teamBonus +
                 departmentBonus +
                 mortgageAgentIncome +
-                mortgageBrokerIncome +
-                financePersonalBonus,
+                mortgageBrokerIncome,
         });
     } catch (error) {
         console.error('Get personal salary error:', error);

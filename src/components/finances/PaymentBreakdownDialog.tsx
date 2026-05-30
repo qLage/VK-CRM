@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Wallet, Loader2, CreditCard, Pencil, Check, X, CheckCircle2, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -25,7 +25,6 @@ interface PaymentBreakdownDialogProps {
     full_name: string;
     base_salary: number;
     personal_income: number;
-    finance_personal_bonus?: number;
     mortgage_income?: number;
     mortgage_agent_income?: number;
     mortgage_broker_income?: number;
@@ -64,7 +63,6 @@ export function PaymentBreakdownDialog({
   const [personalIncomeOpen, setPersonalIncomeOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
-  const [bonusDetailOpen, setBonusDetailOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { transactions } = useFinances();
 
@@ -72,14 +70,6 @@ export function PaymentBreakdownDialog({
   const employeeExpenseTx = transactions.filter(
     (tx) => tx.user_id === employee.id && tx.type === 'expense'
   );
-  const bonusTransactions = useMemo(() => {
-    return employeeExpenseTx.filter((tx) => {
-      if (tx.description?.includes(payrollBracket)) return false;
-      const recognized = ['Оклад:', 'Личный доход:', 'Ипотечная услуга:', 'Команда (МОП):', 'РОП / филиал:', 'Комиссия команды:', 'Комиссия:'];
-      if (recognized.some((r) => tx.description?.includes(r))) return false;
-      return tx.category === 'premium' || tx.category === 'salary' || tx.category === 'other_expense';
-    });
-  }, [employeeExpenseTx, payrollBracket]);
 
   useEffect(() => {
     const initialComponents: SalaryComponent[] = [];
@@ -93,24 +83,13 @@ export function PaymentBreakdownDialog({
       });
     }
 
-    const rawPersonalIncome = Math.max(0, (employee.personal_income || 0) - (employee.finance_personal_bonus || 0));
-
     // Always show personal income (even 0) so user sees what is credited
     initialComponents.push({
       id: 'personal_income',
       label: 'Личный доход',
-      amount: rawPersonalIncome,
+      amount: employee.personal_income || 0,
       color: 'text-emerald-400'
     });
-
-    if (employee.finance_personal_bonus > 0) {
-      initialComponents.push({
-        id: 'finance_personal_bonus',
-        label: 'Ручные начисления / бонусы',
-        amount: employee.finance_personal_bonus,
-        color: 'text-amber-400',
-      });
-    }
 
     if (employee.team_revenue > 0) {
       initialComponents.push({
@@ -199,14 +178,9 @@ export function PaymentBreakdownDialog({
         paid.add('base_salary');
       }
 
-      const bonusPaidTotal = bonusTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-      if (bonusPaidTotal >= (employee.finance_personal_bonus || 0) && (employee.finance_personal_bonus || 0) > 0) {
-        paid.add('finance_personal_bonus');
-      }
-
       setPaidComponents(paid);
     }
-  }, [open, transactions, employee.id, py, pm, usesOfficialPayroll, bonusTransactions]);
+  }, [open, transactions, employee.id, py, pm, usesOfficialPayroll]);
 
   useEffect(() => {
     if (editingComponent && inputRef.current) {
@@ -559,7 +533,7 @@ export function PaymentBreakdownDialog({
 
                       {!isEditing && !isPaid && (
                         <div className="flex items-center gap-2">
-                          {(component.id === 'personal_income' || component.id === 'team_revenue' || component.id === 'department_revenue' || component.id === 'finance_personal_bonus') && (
+                          {(component.id === 'personal_income' || component.id === 'team_revenue' || component.id === 'department_revenue') && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -568,7 +542,7 @@ export function PaymentBreakdownDialog({
                                 if (component.id === 'personal_income') setPersonalIncomeOpen(true);
                                 if (component.id === 'team_revenue') setTeamOpen(true);
                                 if (component.id === 'department_revenue') setDepartmentOpen(true);
-                                if (component.id === 'finance_personal_bonus') setBonusDetailOpen(true);
+                                // bonus detail removed
                               }}
                             >
                               <List className="h-3.5 w-3.5 mr-1.5" />
@@ -589,17 +563,7 @@ export function PaymentBreakdownDialog({
 
                       {isPaid && (
                         <div className="flex items-center gap-2">
-                          {component.id === 'finance_personal_bonus' && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-9 px-3 rounded-xl bg-white/5 text-muted-foreground hover:text-white flex-shrink-0"
-                              onClick={() => setBonusDetailOpen(true)}
-                            >
-                              <List className="h-3.5 w-3.5 mr-1.5" />
-                              Детали
-                            </Button>
-                          )}
+                          {/* bonus details removed */}
                           <div className="h-9 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
                             <span className="text-emerald-500 font-bold text-xs">Выплачено</span>
                           </div>
@@ -735,44 +699,7 @@ export function PaymentBreakdownDialog({
         }}
       />
 
-      <Dialog open={bonusDetailOpen} onOpenChange={setBonusDetailOpen}>
-        <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-lg w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[80vh] flex flex-col" style={{ '--dialog-content-max-width': '28rem' } as React.CSSProperties}>
-          <div className="p-6 space-y-4">
-            <DialogHeader className="space-y-1">
-              <DialogTitle className="text-xl font-bold text-white tracking-tight">Ручные начисления / бонусы</DialogTitle>
-              <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                {employee.full_name}
-              </p>
-            </DialogHeader>
-
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
-              {bonusTransactions.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Нет найденных выплат</p>
-              ) : (
-                bonusTransactions.map((tx) => (
-                  <div key={tx.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-white/[0.03] border border-white/5">
-                    <div className="min-w-0">
-                      <p className="text-xs text-white/60">{tx.description || 'Без описания'}</p>
-                      <p className="text-[10px] text-white/40 mt-0.5">{format(new Date(tx.created_at), 'dd.MM.yyyy HH:mm', { locale: ru })} · {tx.category}</p>
-                    </div>
-                    <span className="text-sm font-mono font-bold text-white ml-3 tabular-nums">{tx.amount.toLocaleString('ru-RU')} ₽</span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="pt-2 border-t border-white/10">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Всего выплачено</span>
-                <span className="text-base font-mono font-bold text-white tabular-nums">
-                  {bonusTransactions.reduce((sum, tx) => sum + (tx.amount || 0), 0).toLocaleString('ru-RU')} ₽
-                </span>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* bonus detail dialog removed */}
     </>
   );
 }

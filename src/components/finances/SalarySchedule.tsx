@@ -110,7 +110,7 @@ export function SalarySchedule() {
             branch_id: s.branch_id,
             team_id: s.team_id,
             personal_income: (s.personal_income || 0) + mortgageAgent + mortgageBroker,
-            finance_personal_bonus: s.finance_personal_bonus || 0,
+            // finance_personal_bonus removed
             mortgage_income,
             mortgage_agent_income: mortgageAgent,
             mortgage_broker_income: mortgageBroker,
@@ -496,7 +496,7 @@ export function SalarySchedule() {
                               full_name: emp.full_name,
                               base_salary: emp.base_salary,
                               personal_income: emp.personal_income,
-                              finance_personal_bonus: emp.finance_personal_bonus,
+                              // finance_personal_bonus removed
                               mortgage_income: emp.mortgage_income,
                               mortgage_agent_income: emp.mortgage_agent_income,
                               mortgage_broker_income: emp.mortgage_broker_income,
