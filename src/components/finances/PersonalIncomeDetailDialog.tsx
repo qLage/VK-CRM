@@ -152,7 +152,7 @@ export function PersonalIncomeDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[90vh] flex flex-col" style={{ '--dialog-content-max-width': '36rem' } as React.CSSProperties}>
+      <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-3xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[90vh] flex flex-col" style={{ '--dialog-content-max-width': '48rem' } as React.CSSProperties}>
         <div className="p-6 md:p-8 space-y-6 flex-1 overflow-hidden flex flex-col">
           <DialogHeader className="space-y-1 shrink-0">
             <DialogTitle className="text-xl md:text-2xl font-bold text-white tracking-tight">
@@ -197,11 +197,10 @@ export function PersonalIncomeDetailDialog({
                 return (
                   <div
                     key={dealKey}
-                    className={`group relative flex flex-col gap-2.5 p-4 rounded-2xl border transition-all ${
+                    className={`group relative flex items-center justify-between gap-4 py-3 px-4 rounded-2xl border transition-all ${
                       isPaid ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-white/[0.03] border-white/10 hover:border-white/20'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-4">
                       {/* Left: icon + info */}
                       <div className="flex items-start gap-3 min-w-0 flex-1">
                         <div className={`h-10 w-10 rounded-xl border flex items-center justify-center flex-shrink-0 mt-0.5 ${getRoleBadgeColor(deal.role_type)}`}>
@@ -239,7 +238,7 @@ export function PersonalIncomeDetailDialog({
                       </div>
 
                       {/* Right: amount + actions */}
-                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-3 flex-shrink-0">
                         {isEditing ? (
                           <div className="flex items-center gap-1.5">
                             <Input
@@ -262,51 +261,51 @@ export function PersonalIncomeDetailDialog({
                             </Button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <div className="flex flex-col items-end gap-0.5">
-                              {applySelfEmployedTax && (
-                                <span className="text-xs text-white/30 line-through tabular-nums">
-                                  {(editedAmounts[deal.id] ?? deal.amount).toLocaleString('ru-RU')} ₽
+                          <>
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-col items-end gap-0.5">
+                                {applySelfEmployedTax && (
+                                  <span className="text-xs text-white/30 line-through tabular-nums">
+                                    {(editedAmounts[deal.id] ?? deal.amount).toLocaleString('ru-RU')} ₽
+                                  </span>
+                                )}
+                                <span className="text-lg font-mono font-bold text-white tabular-nums">
+                                  {amount.toLocaleString('ru-RU')}
+                                  <span className="text-white/30 text-xs font-normal ml-1">₽</span>
                                 </span>
+                              </div>
+                              {!isPaid && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 rounded-lg bg-white/5 text-muted-foreground hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleStartEdit(deal)}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
                               )}
-                              <span className="text-xl font-mono font-bold text-white tabular-nums">
-                                {amount.toLocaleString('ru-RU')}
-                                <span className="text-white/30 text-xs font-normal ml-1">₽</span>
-                              </span>
                             </div>
+
                             {!isPaid && (
                               <Button
                                 size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 rounded-lg bg-white/5 text-muted-foreground hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => handleStartEdit(deal)}
+                                className="h-9 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-900/30 border-none"
+                                onClick={() => handlePayDeal(deal)}
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                <Wallet className="h-3.5 w-3.5 mr-1.5" />
+                                Выплатить
                               </Button>
                             )}
-                          </div>
-                        )}
 
-                        {/* Pay button per deal */}
-                        {!isPaid && !isEditing && (
-                          <Button
-                            size="sm"
-                            className="h-9 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-900/30 border-none"
-                            onClick={() => handlePayDeal(deal)}
-                          >
-                            <Wallet className="h-3.5 w-3.5 mr-1.5" />
-                            Выплатить
-                          </Button>
-                        )}
-
-                        {isPaid && (
-                          <div className="h-9 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1.5">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                            <span className="text-emerald-500 font-bold text-xs">Выплачено</span>
-                          </div>
+                            {isPaid && (
+                              <div className="h-9 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1.5">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                <span className="text-emerald-500 font-bold text-xs">Выплачено</span>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
-                    </div>
                   </div>
                 );
               })}
