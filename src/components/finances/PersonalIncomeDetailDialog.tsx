@@ -96,7 +96,8 @@ export function PersonalIncomeDetailDialog({
   const handleSaveEdit = () => {
     const num = Number(tempValue.replace(/\D/g, '')) || 0;
     if (editingId) {
-      setEditedAmounts(prev => ({ ...prev, [editingId]: num }));
+      const dealId = editingId.split('-')[0];
+      setEditedAmounts(prev => ({ ...prev, [dealId]: num }));
     }
     setEditingId(null);
     setTempValue('');
