@@ -60,6 +60,7 @@ export function PaymentBreakdownDialog({
   const [editingComponent, setEditingComponent] = useState<string | null>(null);
   const [tempEditValue, setTempEditValue] = useState<string>('');
   const [paidComponents, setPaidComponents] = useState<Set<string>>(new Set());
+  const [paidAmounts, setPaidAmounts] = useState<Record<string, number>>({});
   const [personalIncomeOpen, setPersonalIncomeOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
@@ -176,6 +177,7 @@ export function PaymentBreakdownDialog({
       }
 
       setPaidComponents(paid);
+      setPaidAmounts(paidAmounts);
     }
   }, [open, transactions, employee.id, py, pm, usesOfficialPayroll, editedAmounts]);
 
@@ -375,7 +377,7 @@ export function PaymentBreakdownDialog({
                             {component.label}
                           </Label>
                           <span className="text-lg font-mono font-bold text-white inline-flex items-baseline gap-1 tabular-nums">
-                            {amount.toLocaleString('ru-RU')}{' '}
+                            {(isPaid && paidAmounts['base_salary'] > 0 ? paidAmounts['base_salary'] : amount).toLocaleString('ru-RU')}{' '}
                             <span className="text-white/35 text-xs font-normal leading-none">₽</span>
                           </span>
                           {isPaid && (
@@ -523,7 +525,7 @@ export function PaymentBreakdownDialog({
                           />
                         ) : (
                           <span className="text-lg font-mono font-bold text-white">
-                            {amount.toLocaleString('ru-RU')} <span className="text-white/30 text-xs font-normal">₽</span>
+                            {(isPaid && paidAmounts[component.id] > 0 ? paidAmounts[component.id] : amount).toLocaleString('ru-RU')} <span className="text-white/30 text-xs font-normal">₽</span>
                           </span>
                         )}
                       </div>
