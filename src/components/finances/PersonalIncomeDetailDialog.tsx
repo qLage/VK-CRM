@@ -152,7 +152,7 @@ export function PersonalIncomeDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-4xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[90vh] flex flex-col" style={{ '--dialog-content-max-width': '56rem' } as React.CSSProperties}>
+      <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[90vh] flex flex-col" style={{ '--dialog-content-max-width': '36rem' } as React.CSSProperties}>
         <div className="p-6 md:p-8 space-y-6 flex-1 overflow-hidden flex flex-col">
           <DialogHeader className="space-y-1 shrink-0">
             <DialogTitle className="text-xl md:text-2xl font-bold text-white tracking-tight">
