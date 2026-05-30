@@ -54,7 +54,7 @@ export function PersonalIncomeDetailDialog({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempValue, setTempValue] = useState<string>('');
   const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
-  const [applySelfEmployedTax, setApplySelfEmployedTax] = useState(true);
+  const [dealTaxMap, setDealTaxMap] = useState<Record<string, boolean>>({});
 
   const { data: payrollSettings } = useQuery({
     queryKey: ['payroll-org-settings'],
@@ -80,12 +80,13 @@ export function PersonalIncomeDetailDialog({
   });
 
   const getDealAmount = (deal: DealItem) => {
+    const dealKey = `${deal.id}-${deal.role_type}`;
     const raw = editedAmounts[deal.id] ?? deal.amount;
-    if (!applySelfEmployedTax) return raw;
+    if (!dealTaxMap[dealKey]) return raw;
     return Math.round(raw * (1 - taxPercent / 100));
   };
 
-  const totalAmount = deals.reduce((sum: number, d: DealItem) => sum + (paidIds.has(d.id) ? 0 : getDealAmount(d)), 0);
+  const totalAmount = deals.reduce((sum: number, d: DealItem) => sum + (paidIds.has(`${d.id}-${d.role_type}`) ? 0 : getDealAmount(d)), 0);
   const unpaidCount = deals.filter((d: DealItem) => !paidIds.has(d.id)).length;
 
   const handleStartEdit = (deal: DealItem) => {
@@ -153,7 +154,7 @@ export function PersonalIncomeDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-3xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[90vh] flex flex-col" style={{ '--dialog-content-max-width': '48rem' } as React.CSSProperties}>
+      <DialogContent className="sm:rounded-[28px] max-w-[95vw] sm:max-w-4xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900 max-h-[90vh] flex flex-col" style={{ '--dialog-content-max-width': '56rem' } as React.CSSProperties}>
         <div className="p-6 md:p-8 space-y-6 flex-1 overflow-hidden flex flex-col">
           <DialogHeader className="space-y-1 shrink-0">
             <DialogTitle className="text-xl md:text-2xl font-bold text-white tracking-tight">
@@ -164,17 +165,6 @@ export function PersonalIncomeDetailDialog({
               {userName}
             </p>
           </DialogHeader>
-
-          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 shrink-0">
-            <Checkbox
-              id="apply-self-employed-tax-personal"
-              checked={applySelfEmployedTax}
-              onCheckedChange={(v) => setApplySelfEmployedTax(v === true)}
-            />
-            <Label htmlFor="apply-self-employed-tax-personal" className="text-sm text-white/80 font-medium cursor-pointer">
-              Удержать налог самозанятого ({taxPercent}%)
-            </Label>
-          </div>
 
           {isLoading ? (
             <div className="space-y-3">
@@ -264,8 +254,15 @@ export function PersonalIncomeDetailDialog({
                         ) : (
                           <>
                             <div className="flex items-center gap-2">
+                              {!isPaid && (
+                                <Checkbox
+                                  checked={dealTaxMap[dealKey] ?? false}
+                                  onCheckedChange={(v) => setDealTaxMap(prev => ({ ...prev, [dealKey]: v === true }))}
+                                  className="mr-1"
+                                />
+                              )}
                               <div className="flex flex-col items-end gap-0.5">
-                                {applySelfEmployedTax && (
+                                {dealTaxMap[dealKey] && (
                                   <span className="text-xs text-white/30 line-through tabular-nums">
                                     {(editedAmounts[deal.id] ?? deal.amount).toLocaleString('ru-RU')} ₽
                                   </span>
