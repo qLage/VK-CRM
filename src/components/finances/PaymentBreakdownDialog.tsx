@@ -131,40 +131,52 @@ export function PaymentBreakdownDialog({
       );
 
       const paid = new Set<string>();
-      employeeTransactions.forEach(tx => {
-        // Parse description to identify which components were paid
-        // Format: "Выплата за {month} — {name} ({component}: {amount} ₽)"
-        const componentMatch = tx.description.match(/\(([^:]+):/);
-        if (componentMatch) {
-          const componentLabel = componentMatch[1].trim();
-          // Map label back to component ID
-          const componentMap: Record<string, string> = {
-            'Оклад': 'base_salary',
-            'ОКЛАД': 'base_salary',
-            'Личный доход': 'personal_income',
-            'Ипотечная услуга': 'mortgage_income',
-            'Команда (МОП)': 'team_revenue',
-            'РОП / филиал': 'department_revenue',
-            'Комиссия команды': 'department_revenue',
-            'Комиссия': 'commission',
-            // Старые выплаты: «Ипотека» в описании относилась к МОП (team_revenue)
-            'Ипотека': 'team_revenue',
-          };
-          const componentId = componentMap[componentLabel];
-          if (componentId) {
-            paid.add(componentId);
-          }
-        }
+      const paidAmounts: Record<string, number> = {};
 
-        // Check if it's a "Pay All" transaction (contains multiple components)
-        if (tx.description.includes('Оклад:')) paid.add('base_salary');
-        if (tx.description.includes('Личный доход:')) paid.add('personal_income');
-        if (tx.description.includes('Ипотечная услуга:')) paid.add('mortgage_income');
-        if (tx.description.includes('Команда (МОП):')) paid.add('team_revenue');
-        if (tx.description.includes('РОП / филиал:')) paid.add('department_revenue');
-        if (tx.description.includes('Комиссия команды:')) paid.add('department_revenue');
-        if (tx.description.includes('Ипотека:') && !tx.description.includes('Ипотечная услуга:')) paid.add('team_revenue');
-        if (tx.description.includes('Комиссия:')) paid.add('commission');
+      const parseAmountFromDesc = (desc: string, label: string): number => {
+        const regex = new RegExp(`${label}:\\s*([\\d\\s]+)\\s*₽`);
+        const match = desc.match(regex);
+        if (match) {
+          return parseInt(match[1].replace(/\s/g, ''), 10) || 0;
+        }
+        return 0;
+      };
+
+      employeeTransactions.forEach(tx => {
+        const labels = [
+          { label: 'Оклад', id: 'base_salary' },
+          { label: 'Личный доход', id: 'personal_income' },
+          { label: 'Ипотечная услуга', id: 'mortgage_income' },
+          { label: 'Команда (МОП)', id: 'team_revenue' },
+          { label: 'РОП / филиал', id: 'department_revenue' },
+          { label: 'Комиссия команды', id: 'department_revenue' },
+          { label: 'Комиссия', id: 'commission' },
+          { label: 'Ипотека', id: 'team_revenue' },
+        ];
+        labels.forEach(({ label, id }) => {
+          if (tx.description.includes(`${label}:`)) {
+            const amount = parseAmountFromDesc(tx.description, label);
+            if (amount > 0) {
+              paidAmounts[id] = (paidAmounts[id] || 0) + amount;
+            }
+          }
+        });
+      });
+
+      const componentAmounts: Record<string, number> = {
+        base_salary: employee.base_salary,
+        personal_income: employee.personal_income,
+        mortgage_income: (employee.mortgage_income ?? 0),
+        team_revenue: employee.team_revenue,
+        department_revenue: employee.department_revenue,
+        commission: employee.commission,
+      };
+
+      Object.entries(paidAmounts).forEach(([id, paidAmt]) => {
+        const target = editedAmounts[id] ?? componentAmounts[id] ?? 0;
+        if (paidAmt >= target && target > 0) {
+          paid.add(id);
+        }
       });
 
       let okladAdvanceRecorded = false;
@@ -180,7 +192,7 @@ export function PaymentBreakdownDialog({
 
       setPaidComponents(paid);
     }
-  }, [open, transactions, employee.id, py, pm, usesOfficialPayroll]);
+  }, [open, transactions, employee.id, py, pm, usesOfficialPayroll, editedAmounts]);
 
   useEffect(() => {
     if (editingComponent && inputRef.current) {
