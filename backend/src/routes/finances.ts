@@ -837,7 +837,9 @@ router.get('/salaries', authenticateToken, requirePermission('can_view_finances'
                     OR agent_name = $2
                     OR (agent_id IS NULL AND created_by = $1)
                 )
-                  AND ${DEAL_DATE_SQL} >= $3 AND ${DEAL_DATE_SQL} < $4
+                  AND payment_date >= $3 AND payment_date < $4
+                  AND payment_date IS NOT NULL
+                  AND payment_date <> ''
                   AND status IN ('approved', 'active')
             `, [emp.id, emp.full_name, pStart, pEnd]);
             console.log(`[SALARIES] ${emp.full_name} (id=${emp.id}) personal:`, personalRes.rows[0]);
@@ -2200,7 +2202,9 @@ router.get('/salaries/deals/:userId', authenticateToken, requirePermission('can_
                 subcontractor_amount
             FROM deal_table_rows
             WHERE (agent_id = $1 OR agent_name = $2)
-              AND ${DEAL_DATE_SQL_DEALS} >= $3 AND ${DEAL_DATE_SQL_DEALS} < $4
+              AND payment_date >= $3 AND payment_date < $4
+              AND payment_date IS NOT NULL
+              AND payment_date <> ''
               AND status IN ('approved', 'active')
               AND company_id = $5
             ORDER BY payment_date DESC NULLS LAST
