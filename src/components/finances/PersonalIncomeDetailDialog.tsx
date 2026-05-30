@@ -87,7 +87,7 @@ export function PersonalIncomeDetailDialog({
   };
 
   const totalAmount = deals.reduce((sum: number, d: DealItem) => sum + (paidIds.has(`${d.id}-${d.role_type}`) ? 0 : getDealAmount(d)), 0);
-  const unpaidCount = deals.filter((d: DealItem) => !paidIds.has(d.id)).length;
+  const unpaidCount = deals.filter((d: DealItem) => !paidIds.has(`${d.id}-${d.role_type}`)).length;
 
   const handleStartEdit = (deal: DealItem) => {
     setEditingId(`${deal.id}|${deal.role_type}`);
@@ -125,7 +125,6 @@ export function PersonalIncomeDetailDialog({
     }));
     const total = items.reduce((sum, i) => sum + i.amount, 0);
     onPayDeal(items, total);
-    onOpenChange(false);
   };
 
   const getRoleIcon = (roleType: string) => {
