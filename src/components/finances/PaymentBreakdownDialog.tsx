@@ -329,7 +329,7 @@ export function PaymentBreakdownDialog({
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      <DialogContent className="sm:rounded-[32px] max-w-[95vw] sm:max-w-5xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900">
+      <DialogContent className="sm:rounded-[32px] max-w-[95vw] sm:max-w-5xl w-full mx-4 p-0 overflow-hidden shadow-2xl shadow-black/60 border border-white/10 bg-gradient-to-br from-zinc-950 via-zinc-950 to-zinc-900" style={{ '--dialog-content-max-width': '64rem' } as React.CSSProperties}>
         <div className="p-6 md:p-8 space-y-6">
           <DialogHeader className="space-y-1">
             <DialogTitle className="text-xl md:text-2xl font-bold text-white tracking-tight">Выплата зарплаты</DialogTitle>
