@@ -476,10 +476,11 @@ export function PaymentBreakdownDialog({
 
                   const isEditableRow = component.id !== 'personal_income';
                   const rowPad = isEditableRow ? 'py-4 pr-4 pl-10' : 'p-4';
+                  const rowMargin = isEditableRow ? 'ml-10' : '';
                   return (
                     <div
                       key={component.id}
-                      className={`group relative flex items-center gap-3 ${rowPad} rounded-2xl border transition-all duration-200 ${isPaid
+                      className={`group relative flex items-center gap-3 ${rowPad} ${rowMargin} rounded-2xl border transition-all duration-200 ${isPaid
                           ? 'bg-emerald-500/5 border-emerald-500/20'
                           : 'bg-white/5 border-white/10 hover:border-white/20'
                         }`}
@@ -488,7 +489,7 @@ export function PaymentBreakdownDialog({
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 rounded-xl bg-white/5 text-muted-foreground hover:text-white"
+                          className="absolute -left-10 top-1/2 -translate-y-1/2 h-8 w-8 p-0 rounded-xl bg-white/5 text-muted-foreground hover:text-white"
                           onClick={() => handleStartEdit(component.id)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -496,7 +497,7 @@ export function PaymentBreakdownDialog({
                       )}
 
                       {isPaid && isEditableRow && (
-                        <div className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center">
+                        <div className="absolute -left-10 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center">
                           <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                         </div>
                       )}
@@ -508,7 +509,7 @@ export function PaymentBreakdownDialog({
                       )}
 
                       {isEditing && isEditableRow && (
-                        <div className="absolute left-2 top-1/2 -translate-y-1/2 flex gap-1.5">
+                        <div className="absolute -left-10 top-1/2 -translate-y-1/2 flex gap-1.5">
                           <Button
                             size="sm"
                             className="h-8 w-8 p-0 bg-emerald-500 hover:bg-emerald-600"
@@ -587,8 +588,21 @@ export function PaymentBreakdownDialog({
                       )}
 
                       {isPaid && (
-                        <div className="h-9 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                          <span className="text-emerald-500 font-bold text-xs">Выплачено</span>
+                        <div className="flex items-center gap-2">
+                          {component.id === 'finance_personal_bonus' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-9 px-3 rounded-xl bg-white/5 text-muted-foreground hover:text-white flex-shrink-0"
+                              onClick={() => setBonusDetailOpen(true)}
+                            >
+                              <List className="h-3.5 w-3.5 mr-1.5" />
+                              Детали
+                            </Button>
+                          )}
+                          <div className="h-9 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                            <span className="text-emerald-500 font-bold text-xs">Выплачено</span>
+                          </div>
                         </div>
                       )}
                     </div>
